@@ -12,6 +12,7 @@ from internlm.monitor import internevo_monitor
 from internlm.train import initialize_model
 from internlm.utils.common import parse_args
 from internlm.model.registry import model_initializer, hf_config_initializer
+
 from huggingface_model.internlm_model.modeling_internlm import InternLMForCausalLM
 from huggingface_model.internlm_model.configuration_internlm import InternLMConfig
 
@@ -22,6 +23,14 @@ def main(args):
     # register huggingface model and config for InternEvo
     model_initializer.register_module("INTERNLM_FROM_HF", InternLMForCausalLM)
     hf_config_initializer.register_module("INTERNLM_FROM_HF", InternLMConfig)
+    if "_FROM_HF" in gpc.config.model_type:  # TODO: here need to decide which model config to choose
+        hf_config_builder = hf_config_initializer.get_module(module_name=gpc.config.model_type)
+        hf_cfg = hf_config_builder(return_dict=False)
+        gpc.config.model.num_layers = hf_cfg.num_hidden_layers
+        gpc.config.model.hidden_size = hf_cfg.hidden_size
+        gpc.config.model.num_attention_heads = hf_cfg.num_attention_heads
+        gpc.config.model.mlp_ratio = hf_cfg.intermediate_size / hf_cfg.hidden_size
+        gpc.config.model.vocab_size = hf_cfg.vocab_size
 
     # initialize model
     model = initialize_model()

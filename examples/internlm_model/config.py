@@ -1,13 +1,9 @@
-JOB_NAME = "7b_train"
 model_type = "INTERNLM_FROM_HF"
+
+JOB_NAME = f"train_{model_type}"
 DO_ALERT = False
 
 SEQ_LEN = 1024
-HIDDEN_SIZE = 4096
-NUM_ATTENTION_HEAD = 32
-MLP_RATIO = 8 / 3
-NUM_LAYER = 32
-VOCAB_SIZE = 103168
 
 MODEL_ONLY_FOLDER = "internlm/internlm-7b"
 # Ckpt folder format:
@@ -141,14 +137,9 @@ beta2_scheduler = dict(
 use_fp32_norm = False
 model = dict(
     checkpoint=True,  # The proportion of layers for activation aheckpointing, the optional value are True/False/[0-1]
-    num_attention_heads=NUM_ATTENTION_HEAD,
     embed_split_hidden=True,
-    vocab_size=VOCAB_SIZE,
     embed_grad_scale=1,
     parallel_output=False,
-    hidden_size=HIDDEN_SIZE,
-    num_layers=NUM_LAYER,
-    mlp_ratio=MLP_RATIO,
     apply_post_layer_norm=False,
     dtype="torch.bfloat16",  # Support: "torch.float16", "torch.half", "torch.bfloat16", "torch.float32", "torch.tf32"
     norm_type="rmsnorm",
