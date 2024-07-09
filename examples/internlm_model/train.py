@@ -21,8 +21,8 @@ from huggingface_model.internlm_model.configuration_internlm import InternLMConf
 def main(args):
 
     # register huggingface model and config for InternEvo
-    model_initializer.register_module("INTERNLM_FROM_HF", InternLMForCausalLM)
-    hf_config_initializer.register_module("INTERNLM_FROM_HF", InternLMConfig)
+    model_initializer.register_module(gpc.config.model_type, InternLMForCausalLM)
+    hf_config_initializer.register_module(gpc.config.model_type, InternLMConfig)
     if "_FROM_HF" in gpc.config.model_type:  # TODO: here need to decide which model config to choose
         hf_config_builder = hf_config_initializer.get_module(module_name=gpc.config.model_type)
         hf_cfg = hf_config_builder(return_dict=False)
