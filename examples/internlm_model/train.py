@@ -19,11 +19,10 @@ from huggingface_model.internlm_model.configuration_internlm import InternLMConf
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
-
     # register huggingface model and config for InternEvo
     model_initializer.register_module(gpc.config.model_type, InternLMForCausalLM)
     hf_config_initializer.register_module(gpc.config.model_type, InternLMConfig)
-    if "_FROM_HF" in gpc.config.model_type:  # TODO: here need to decide which model config to choose
+    if "_FROM_HF" in gpc.config.model_type:
         hf_config_builder = hf_config_initializer.get_module(module_name=gpc.config.model_type)
         hf_cfg = hf_config_builder(return_dict=False)
         gpc.config.model.num_layers = hf_cfg.num_hidden_layers
