@@ -37,8 +37,7 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),  # snapshot ckpt save frequency.
 )
 
-TRAIN_FOLDER = "Salesforce/wikitext"  # "/path/to/dataset"
-SUBSET_NAME = "wikitext-103-raw-v1"
+TRAIN_FOLDER = "roneneldan/TinyStories"  # "/path/to/dataset"
 VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     type="hf",
@@ -64,7 +63,6 @@ data = dict(
     # Datasets with less than 50 rows will be discarded
     min_length=50,
     train_folder=TRAIN_FOLDER,
-    subset_name=SUBSET_NAME,
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
