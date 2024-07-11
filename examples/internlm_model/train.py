@@ -22,7 +22,7 @@ def main(args):
     # register huggingface model and config for InternEvo
     model_initializer.register_module(gpc.config.model_type, InternLMForCausalLM)
     hf_config_initializer.register_module(gpc.config.model_type, InternLMConfig)
-    if "_FROM_HF" in gpc.config.model_type:
+    if gpc.config.model_type == "hf":
         hf_config_builder = hf_config_initializer.get_module(module_name=gpc.config.model_type)
         hf_cfg = hf_config_builder(return_dict=False)
         gpc.config.model.num_layers = hf_cfg.num_hidden_layers
