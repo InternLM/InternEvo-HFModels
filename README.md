@@ -27,10 +27,11 @@ parallel = dict(
     zero1=dict(size=-1),
     tensor=dict(size=2, mode="isp"),
     pipeline=dict(size=1, interleaved_overlap=True),
-    weight=dict(size=2, overlap=True, memory_pool=True),
+    weight=dict(size=2, overlap=False, memory_pool=True),
 )
 ```
 Here, the size value in tensor is the size of sequence parallelism, and the size value in weight is the size of weight parallelism in ISP mode.
+Note: here overlap in weight parameter should be set to False.
 
 The modeling file of the model needs to be modified to use the new_linear() function provided by InternEvo for the initialization of head, attention calculations, and mlp in the linear function. Taking the modeling file of the InternLM model as an example, the modification is as follows:
 ```bash

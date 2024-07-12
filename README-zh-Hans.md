@@ -27,10 +27,11 @@ parallel = dict(
     zero1=dict(size=-1),
     tensor=dict(size=2, mode="isp"),
     pipeline=dict(size=1, interleaved_overlap=True),
-    weight=dict(size=2, overlap=True, memory_pool=True),
+    weight=dict(size=2, overlap=False, memory_pool=True),
 )
 ```
 其中，tensor中的size为序列并行的大小，weight中的size为isp模式中，权重并行的大小。
+注意：这里weight参数中的overlap需要设置为False。
 
 需要修改模型modeling文件，将head、attention计算以及mlp中涉及的linear初始化函数改为使用InternEvo提供的new_linear()函数。以internlm模型的modeling文件为例，修改如下：
 ```bash
