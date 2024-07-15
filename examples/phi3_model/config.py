@@ -41,7 +41,7 @@ TRAIN_FOLDER = "roneneldan/TinyStories"  # "/path/to/dataset"
 VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     type="hf",
-    tokenizer_path="microsoft/Phi-3-mini-4k-instruct",
+    tokenizer_path="internlm/internlm-7b",
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
     micro_num=4,

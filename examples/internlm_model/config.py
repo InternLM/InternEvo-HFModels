@@ -1,6 +1,6 @@
 model_type = "hf"
 
-JOB_NAME = f"train_{model_type}"
+JOB_NAME = f"train_{model_type}_internlm"
 DO_ALERT = False
 
 SEQ_LEN = 1024
