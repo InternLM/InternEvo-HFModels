@@ -5,7 +5,7 @@ DO_ALERT = False
 
 SEQ_LEN = 1024
 
-#MODEL_ONLY_FOLDER = "internlm/internlm-7b"
+MODEL_ONLY_FOLDER = "baichuan-inc/Baichuan2-7B-Base"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
 SAVE_CKPT_FOLDER = "local:llm_ckpts"
@@ -22,7 +22,7 @@ ckpt = dict(
     # 1. the 'path' indicate ckpt path,
     # 2. the 'content‘ means what states will be loaded, support: "model", "sampler", "optimizer", "scheduler", "all"
     # 3. the ’ckpt_type‘ means the type of checkpoint to be loaded, support: "internevo", "llama", "hf_llama", "hf_model".
-    load_ckpt_info=None,#dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf_model"),
+    load_ckpt_info=dict(path=MODEL_ONLY_FOLDER, content=("model",), ckpt_type="hf_model"),
     # 'auto_resume' is designed to automatically load the latest checkpoint from 'save_ckpt_folder' when encountering
     # training interruptions/hangs caused by hardware failures, using a scheduling system (such as k8s/slurm)
     # with an automatic restart mechanism upon training reboot.
