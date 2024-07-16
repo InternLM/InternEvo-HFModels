@@ -15,9 +15,9 @@ git clone https://github.com/InternLM/InternEvo-HFModels.git
 ```
 
 ## Start Training
-Run the specified train.py and config.py configuration files to start training according to the model you need, for example:
+Run the specified train.sh to start training according to the model you need, for example:
 ```bash
-srun -p llm_s -N 1 -n 8 --ntasks-per-node=8 --gpus-per-task=1 python examples/internlm_model/train.py --config examples/internlm_model/config.py                             
+bash examples/internlm/internlm_7b/train.sh                            
 ```
 
 ## isp Parallel

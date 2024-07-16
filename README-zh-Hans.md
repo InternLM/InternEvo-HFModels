@@ -15,9 +15,9 @@ git clone https://github.com/InternLM/InternEvo-HFModels.git
 ```
 
 ## 启动训练
-根据需要运行的模型，选择指定的train.py及config.py配置文件启动训练，如：
+根据需要运行的模型，选择指定的train.sh文件启动训练，如：
 ```bash
-srun -p llm_s -N 1 -n 8 --ntasks-per-node=8 --gpus-per-task=1 python examples/internlm_model/train.py --config examples/internlm_model/config.py 
+bash examples/internlm/internlm_7b/train.sh 
 ```
 
 ## isp并行

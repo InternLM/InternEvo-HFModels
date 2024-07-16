@@ -1,11 +1,12 @@
 model_type = "hf"
+HF_MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
 
-JOB_NAME = f"train_{model_type}_internlm"
+JOB_NAME = f"train_{model_type}/{HF_MODEL_NAME}"
 DO_ALERT = False
 
 SEQ_LEN = 1024
 
-MODEL_ONLY_FOLDER = "internlm/internlm-7b"
+MODEL_ONLY_FOLDER = HF_MODEL_NAME
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
 SAVE_CKPT_FOLDER = "local:llm_ckpts"
@@ -14,7 +15,7 @@ SAVE_CKPT_FOLDER = "local:llm_ckpts"
 # import os
 # BOTO3_IP = os.environ["BOTO3_IP"] # boto3 bucket endpoint
 # SAVE_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm"
-CHECKPOINT_EVERY = 1000000
+CHECKPOINT_EVERY = 100000
 ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
@@ -30,7 +31,7 @@ ckpt = dict(
     # path specified in `load_ckpt_info` by default.
     # If you want to initialize your model weights from another model, you must set `auto_resume` to False.
     # If you want to train from scratch, please set `auto_resume` to False and 'load_ckpt_info' to None.
-    auto_resume=False,
+    auto_resume=True,
     checkpoint_every=CHECKPOINT_EVERY,
     async_upload=True,  # async ckpt upload. (only work for boto3 ckpt)
     async_upload_tmp_folder="/dev/shm/internlm_tmp_ckpt/",  # path for temporarily files during asynchronous upload.
@@ -41,7 +42,7 @@ TRAIN_FOLDER = "roneneldan/TinyStories"  # "/path/to/dataset"
 VALID_FOLDER = None  # "/path/to/dataset"
 data = dict(
     type="hf",
-    tokenizer_path="internlm/internlm-7b",
+    tokenizer_path=HF_MODEL_NAME,
     seq_len=SEQ_LEN,
     # micro_num means the number of micro_batch contained in one gradient update
     micro_num=4,
@@ -50,7 +51,7 @@ data = dict(
     # defaults to the value of micro_num
     valid_micro_num=4,
     # defaults to 0, means disable evaluate
-    valid_every=100000,
+    valid_every=50000,
     pack_sample_into_one=False,
     total_steps=50000,
     skip_batches="",
@@ -185,7 +186,7 @@ parallel = dict(
     zero1=dict(size=-1),
     tensor=dict(size=1, mode="mtp"),
     pipeline=dict(size=1, interleaved_overlap=True),
-    weight=dict(size=1, overlap=True, memory_pool=True),
+    weight=dict(size=1, overlap=False, memory_pool=True),
 )
 
 cudnn_deterministic = False

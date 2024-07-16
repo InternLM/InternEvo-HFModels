@@ -13,8 +13,8 @@ from internlm.train import initialize_model
 from internlm.utils.common import parse_args
 from internlm.model.registry import model_initializer, hf_config_initializer
 
-from huggingface_model.internlm_model.modeling_internlm import InternLMForCausalLM
-from huggingface_model.internlm_model.configuration_internlm import InternLMConfig
+from huggingface_model.internlm.internlm_7b.modeling_internlm import InternLMForCausalLM
+from huggingface_model.internlm.internlm_7b.configuration_internlm import InternLMConfig
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)

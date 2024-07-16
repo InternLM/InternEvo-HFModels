@@ -13,15 +13,15 @@ from internlm.train import initialize_model
 from internlm.utils.common import parse_args
 from internlm.model.registry import model_initializer, hf_config_initializer
 
-from huggingface_model.phi3_model.modeling_phi3 import Phi3ForCausalLM
-from huggingface_model.phi3_model.configuration_phi3 import Phi3Config
+from huggingface_model.deepseek_ai.DeepSeek_V2.modeling_deepseek import DeepseekV2ForCausalLM
+from huggingface_model.deepseek_ai.DeepSeek_V2.configuration_deepseek import DeepseekV2Config
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
     # register huggingface model and config for InternEvo
-    model_initializer.register_module(gpc.config.model_type, Phi3ForCausalLM)
-    hf_config_initializer.register_module(gpc.config.model_type, Phi3Config)
+    model_initializer.register_module(gpc.config.model_type, DeepseekV2ForCausalLM)
+    hf_config_initializer.register_module(gpc.config.model_type, DeepseekV2Config)
     if gpc.config.model_type == "hf":
         hf_config_builder = hf_config_initializer.get_module(module_name=gpc.config.model_type)
         hf_cfg = hf_config_builder(return_dict=False)
