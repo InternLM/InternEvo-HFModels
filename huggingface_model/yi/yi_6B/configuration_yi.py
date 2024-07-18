@@ -13,14 +13,12 @@ INTERNLM_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
 
 # Modified from transformers.model.llama.configuration_llama.LlamaConfig
 class YiConfig(PretrainedConfig):
-    model_type = "internlm"
-    _auto_class = "AutoConfig"
+    model_type = "yi"
+    keys_to_ignore_at_inference = ["past_key_values"]
 
     def __init__(  # pylint: disable=W0102
         self,
-        architectures: [
-            "LlamaForCausalLM"
-        ],
+        architectures: ["LlamaForCausalLM"],
         bos_token_id: 1,
         eos_token_id: 2,
         hidden_act: "silu",
@@ -28,22 +26,34 @@ class YiConfig(PretrainedConfig):
         initializer_range: 0.02,
         intermediate_size: 11008,
         max_position_embeddings: 4096,
-        model_type: "llama",
         num_attention_heads: 32,
         num_hidden_layers: 32,
         num_key_value_heads: 4,
         pad_token_id: 0,
         pretraining_tp: 1,
         rms_norm_eps: 1e-05,
-        rope_scaling: null,
         rope_theta: 5000000.0,
-        tie_word_embeddings: false,
+        tie_word_embeddings: False,
         torch_dtype: "bfloat16",
         transformers_version: "4.34.0",
-        use_cache: true,
+        use_cache: True,
         vocab_size: 64000,
+        attn_implementation=None,
         **kwargs,
     ):
+        super().__init__(
+                pad_token_id=pad_token_id,
+                bos_token_id=bos_token_id,
+                eos_token_id=eos_token_id,
+                tie_word_embeddings=tie_word_embeddings,
+                **kwargs,
+        )
+        self.architectures = architectures
+        self.pretraining_tp = pretraining_tp
+        self.rope_theta = rope_theta
+        self.torch_dtype = torch_dtype
+        self.transformers_version = transformers_version
+        self.num_key_value_heads = num_key_value_heads
         self.vocab_size = vocab_size
         self.max_position_embeddings = max_position_embeddings
         self.hidden_size = hidden_size
@@ -57,10 +67,4 @@ class YiConfig(PretrainedConfig):
         self.attn_implementation = attn_implementation
         if self.attn_implementation is None:
             self.attn_implementation = "eager"
-        super().__init__(
-            pad_token_id=pad_token_id,
-            bos_token_id=bos_token_id,
-            eos_token_id=eos_token_id,
-            tie_word_embeddings=tie_word_embeddings,
-            **kwargs,
-        )
+        

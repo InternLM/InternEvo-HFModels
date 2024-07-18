@@ -19,8 +19,8 @@ from abc import ABC, abstractmethod
 import torch
 from llava.model.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, key_info
 
-from .clip_encoder.builder import build_vision_tower
-from .multimodal_projector.builder import build_vision_projector
+from llava.model.clip_encoder.builder import build_vision_tower
+from llava.model.multimodal_projector.builder import build_vision_projector
 
 
 class LlavaMetaModel:
