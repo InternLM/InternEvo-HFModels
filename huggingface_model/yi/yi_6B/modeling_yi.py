@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
+import re
 import torch
 import torch.nn as nn
 from torch.nn import CrossEntropyLoss
@@ -9,12 +10,15 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 import os
 from abc import ABC, abstractmethod
 from transformers.modeling_utils import PreTrainedModel
+from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModel
 
-import torch
-from llava.model.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, key_info
 
-from llava.model.clip_encoder.builder import build_vision_tower
-from llava.model.multimodal_projector.builder import build_vision_projector
+# Model Constants
+IGNORE_INDEX = -100
+IMAGE_TOKEN_INDEX = -200
+DEFAULT_IMAGE_TOKEN = "<image_placeholder>"
+
+key_info = {"model_path": None}
 
 
 class LlavaMetaModel:
@@ -76,6 +80,160 @@ class LlavaMetaModel:
             self.mm_projector.load_state_dict(
                 get_w(mm_projector_weights, "mm_projector")
             )
+
+
+class CLIPVisionTower(nn.Module):
+    def __init__(self, vision_tower, args, delay_load=False):
+        super().__init__()
+
+        self.is_loaded = False
+
+        self.vision_tower_name = vision_tower
+        self.select_layer = args.mm_vision_select_layer
+        self.select_feature = getattr(args, "mm_vision_select_feature", "patch")
+
+        if not delay_load:
+            self.load_model()
+        else:
+            self.cfg_only = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
+
+    def load_model(self):
+        self.image_processor = CLIPImageProcessor.from_pretrained(
+            self.vision_tower_name
+        )
+        self.vision_tower = CLIPVisionModel.from_pretrained(
+            self.vision_tower_name, ignore_mismatched_sizes=True
+        )
+
+        self.is_loaded = True
+
+    def feature_select(self, image_forward_outs):
+        image_features = image_forward_outs.hidden_states[self.select_layer]
+        if self.select_feature == "patch":
+            image_features = image_features[:, 1:]
+        elif self.select_feature == "cls_patch":
+            image_features = image_features
+        else:
+            raise ValueError(f"Unexpected select feature: {self.select_feature}")
+        return image_features
+
+    # @torch.no_grad()
+    def forward(self, images):
+        if type(images) is list:
+            image_features = []
+            for image in images:
+                image_forward_out = self.vision_tower(
+                    image.to(device=self.device, dtype=self.dtype).unsqueeze(0),
+                    output_hidden_states=True,
+                )
+                image_feature = self.feature_select(image_forward_out).to(image.dtype)
+                image_features.append(image_feature)
+        else:
+            image_forward_outs = self.vision_tower(
+                images.to(device=self.device, dtype=self.dtype),
+                output_hidden_states=True,
+            )
+            image_features = self.feature_select(image_forward_outs).to(images.dtype)
+
+        return image_features
+
+    @property
+    def dummy_feature(self):
+        return torch.zeros(1, self.hidden_size, device=self.device, dtype=self.dtype)
+
+    @property
+    def dtype(self):
+        return self.vision_tower.dtype
+
+    @property
+    def device(self):
+        return self.vision_tower.device
+
+    @property
+    def config(self):
+        if self.is_loaded:
+            return self.vision_tower.config
+        else:
+            return self.cfg_only
+
+    @property
+    def hidden_size(self):
+        return self.config.hidden_size
+
+    @property
+    def num_patches(self):
+        return (self.config.image_size // self.config.patch_size) ** 2
+
+
+def build_vision_tower(vision_tower_cfg, **kwargs):
+    vision_tower = getattr(
+        vision_tower_cfg,
+        "mm_vision_tower",
+        getattr(vision_tower_cfg, "vision_tower", None),
+    )
+
+    return CLIPVisionTower(vision_tower, args=vision_tower_cfg, **kwargs)
+
+
+def build_vision_projector(config, delay_load=False, **kwargs):
+    projector_type = getattr(config, "mm_projector_type", "linear")
+
+    if projector_type == "linear":
+        return nn.Linear(config.mm_hidden_size, config.hidden_size)
+
+    use_norm = False
+    if "_Norm" in projector_type:
+        use_norm = True
+        projector_type = projector_type.replace("_Norm", "")
+    mlp_gelu_match = re.match(r"^mlp(\d+)x_gelu$", projector_type)
+    if mlp_gelu_match:
+        mlp_depth = int(mlp_gelu_match.group(1))
+        if use_norm:
+            modules = [
+                nn.Linear(config.mm_hidden_size, config.hidden_size),
+                nn.LayerNorm(config.hidden_size),
+            ]
+        else:
+            modules = [nn.Linear(config.mm_hidden_size, config.hidden_size)]
+        for _ in range(1, mlp_depth):
+            modules.append(nn.GELU())
+            if use_norm:
+                modules.append(nn.Linear(config.hidden_size, config.hidden_size))
+                modules.append(nn.LayerNorm(config.hidden_size))
+            else:
+                modules.append(nn.Linear(config.hidden_size, config.hidden_size))
+        return nn.Sequential(*modules)
+
+    if projector_type == "identity":
+        return IdentityMap()
+
+    raise ValueError(f"Unknown projector type: {projector_type}")
+
+
+class IdentityMap(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, *args, **kwargs):
+        return x
+
+    @property
+    def config(self):
+        return {"mm_projector_type": "identity"}
+
+
+class SimpleResBlock(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.pre_norm = nn.LayerNorm(channels)
+
+        self.proj = nn.Sequential(
+            nn.Linear(channels, channels), nn.GELU(), nn.Linear(channels, channels)
+        )
+
+    def forward(self, x):
+        x = self.pre_norm(x)
+        return x + self.proj(x)
 
 
 class LlavaMetaForCausalLM(PreTrainedModel):
