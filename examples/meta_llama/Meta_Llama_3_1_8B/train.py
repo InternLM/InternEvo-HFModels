@@ -3,18 +3,18 @@
 
 from internlm.core.context import global_context as gpc
 from internlm.core.trainer_builder import TrainerBuilder
-from internlm.data import (
-    build_train_loader_with_data_type,
-    build_valid_loader_with_data_type,
-)
+from internlm.data import (build_train_loader_with_data_type,
+                           build_valid_loader_with_data_type)
 from internlm.initialize import initialize_distributed_env
+from internlm.model.registry import hf_config_initializer, model_initializer
 from internlm.monitor import internevo_monitor
 from internlm.train import initialize_model
 from internlm.utils.common import parse_args
-from internlm.model.registry import model_initializer, hf_config_initializer
 
-from huggingface_model.meta_llama.Meta_Llama_3_1_8B.modeling_llama import LlamaForCausalLM
-from huggingface_model.meta_llama.Meta_Llama_3_1_8B.configuration_llama import LlamaConfig
+from huggingface_model.meta_llama.Meta_Llama_3_1_8B.configuration_llama import \
+    LlamaConfig
+from huggingface_model.meta_llama.Meta_Llama_3_1_8B.modeling_llama import \
+    LlamaForCausalLM
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
