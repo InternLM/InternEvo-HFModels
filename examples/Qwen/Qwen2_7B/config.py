@@ -1,5 +1,5 @@
 model_type = "hf"
-HF_MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
+HF_MODEL_NAME = "Qwen/Qwen2-7B"
 
 JOB_NAME = f"train_{model_type}/{HF_MODEL_NAME}"
 DO_ALERT = False
@@ -15,7 +15,7 @@ SAVE_CKPT_FOLDER = "local:llm_ckpts"
 # import os
 # BOTO3_IP = os.environ["BOTO3_IP"] # boto3 bucket endpoint
 # SAVE_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm"
-CHECKPOINT_EVERY = 100000
+CHECKPOINT_EVERY = 10000
 ckpt = dict(
     enable_save_ckpt=False,  # enable ckpt save.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.

@@ -1,5 +1,5 @@
 model_type = "hf"
-HF_MODEL_NAME = "microsoft/Phi-3-mini-4k-instruct"
+HF_MODEL_NAME = "01-ai/Yi-6B"
 
 JOB_NAME = f"train_{model_type}/{HF_MODEL_NAME}"
 DO_ALERT = False
@@ -15,9 +15,9 @@ SAVE_CKPT_FOLDER = "local:llm_ckpts"
 # import os
 # BOTO3_IP = os.environ["BOTO3_IP"] # boto3 bucket endpoint
 # SAVE_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm"
-CHECKPOINT_EVERY = 100000
+CHECKPOINT_EVERY = 1000
 ckpt = dict(
-    enable_save_ckpt=False,  # enable ckpt save.
+    enable_save_ckpt=True,  # enable ckpt save.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
     # 'load_ckpt_info' setting guide:
     # 1. the 'path' indicate ckpt path,
@@ -52,9 +52,9 @@ data = dict(
     # defaults to the value of micro_num
     valid_micro_num=4,
     # defaults to 0, means disable evaluate
-    valid_every=50000,
+    valid_every=10000,
     pack_sample_into_one=False,
-    total_steps=50000,
+    total_steps=10000,
     skip_batches="",
     # rampup_batch_size (str): A string with three space-separated integers representing the
     #       starting batch size, the increment, and the number of steps between

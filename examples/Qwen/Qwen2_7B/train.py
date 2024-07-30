@@ -13,19 +13,15 @@ from internlm.monitor import internevo_monitor
 from internlm.train import initialize_model
 from internlm.utils.common import parse_args
 
-from huggingface_model.baichuan_inc.Baichuan2_7B_Base.configuration_baichuan import (
-    BaichuanConfig,
-)
-from huggingface_model.baichuan_inc.Baichuan2_7B_Base.modeling_baichuan import (
-    BaichuanForCausalLM,
-)
+from huggingface_model.Qwen.Qwen2_7B.configuration_qwen2 import Qwen2Config
+from huggingface_model.Qwen.Qwen2_7B.modeling_qwen2 import Qwen2ForCausalLM
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
     # register huggingface model and config for InternEvo
-    model_initializer.register_module(gpc.config.model_type, BaichuanForCausalLM)
-    hf_config_initializer.register_module(gpc.config.model_type, BaichuanConfig)
+    model_initializer.register_module(gpc.config.model_type, Qwen2ForCausalLM)
+    hf_config_initializer.register_module(gpc.config.model_type, Qwen2Config)
     if gpc.config.model_type == "hf":
         hf_config_builder = hf_config_initializer.get_module(module_name=gpc.config.model_type)
         hf_cfg = hf_config_builder(return_dict=False)
