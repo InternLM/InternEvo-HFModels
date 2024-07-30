@@ -44,6 +44,8 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
+from internlm.core.context import ParallelMode
+from internlm.core.context import global_context as gpc
 
 try:
     from transformers.generation.streamers import BaseStreamer
@@ -407,6 +409,14 @@ class InternLM2FlashAttention2(InternLM2Attention):
 
         bsz, q_len, _ = hidden_states.size()
 
+        use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
+        
+        if use_packed_dataset:
+            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
+            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
+            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
+            position_ids = position_ids.unsqueeze(0)
+
         qkv_states = self.wqkv(hidden_states)
 
         qkv_states = rearrange(
@@ -439,6 +449,7 @@ class InternLM2FlashAttention2(InternLM2Attention):
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
+        
 
         # dropout_rate = self.attention_dropout if self.training else 0.0
         dropout_rate = 0.0
@@ -469,9 +480,28 @@ class InternLM2FlashAttention2(InternLM2Attention):
             key_states = key_states.to(target_dtype)
             value_states = value_states.to(target_dtype)
 
-        attn_output = self._flash_attention_forward(
-            query_states, key_states, value_states, attention_mask, q_len, dropout=dropout_rate
-        )
+        # attn_output = self._flash_attention_forward(
+        #     query_states, key_states, value_states, attention_mask, q_len, dropout=dropout_rate
+        # )
+        
+        if use_packed_dataset:
+            attn_output = flash_attn_varlen_func(
+                query_states.flatten(0, 1),
+                key_states.flatten(0, 1),
+                value_states.flatten(0, 1),
+                cu_seqlens,
+                cu_seqlens,
+                max_seqlen,
+                max_seqlen,
+                dropout_rate,
+                softmax_scale=None,
+                causal=True,
+                return_attn_probs=False,
+            ).unsqueeze(0)
+        else:
+            attn_output = flash_attn_func(
+                query_states, key_states, value_states, dropout_rate, softmax_scale=None, causal=True, return_attn_probs=False,
+            )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
         attn_output = self.wo(attn_output)

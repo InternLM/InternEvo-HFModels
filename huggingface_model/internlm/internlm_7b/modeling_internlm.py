@@ -37,6 +37,10 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
+from internlm.core.context import ParallelMode
+from internlm.core.context import global_context as gpc
+from internlm.model.ops.rotary_emb import apply_rotary_emb
+
 try:
     from transformers.generation.streamers import BaseStreamer
 except:  # noqa # pylint: disable=bare-except
@@ -405,31 +409,96 @@ class InternLMFlashAttention2(InternLMAttention):
         use_cache: bool = False,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+
         # InternLMFlashAttention2 attention does not support output_attentions
         bsz, q_len, _ = hidden_states.size()
+        
+        use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
+        
+        if use_packed_dataset:
+            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
+            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
+            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
 
-        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        # query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        # key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        # value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
 
+        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim) # (bsz, q_len, num_heads, head_dim)
+        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)  # (bsz, q_len, num_heads, head_dim)
+        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)  # (bsz, q_len, num_heads, head_dim)
+
+        # if past_key_value is not None:
+        #     # reuse k, v, self_attention
+        #     key_states = torch.cat([past_key_value[0], key_states], dim=2)
+        #     value_states = torch.cat([past_key_value[1], value_states], dim=2)
+
+        # past_key_value = (key_states, value_states) if use_cache else None
+
+        # kv_seq_len = key_states.shape[-2]
+        # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+
+        # query_states = query_states.transpose(1, 2)
+        # key_states = key_states.transpose(1, 2)
+        # value_states = value_states.transpose(1, 2)
+        
+        kv_seq_len = key_states.shape[-3]
         if past_key_value is not None:
-            # reuse k, v, self_attention
-            key_states = torch.cat([past_key_value[0], key_states], dim=2)
-            value_states = torch.cat([past_key_value[1], value_states], dim=2)
+            kv_seq_len += past_key_value[0].shape[-2]
 
-        past_key_value = (key_states, value_states) if use_cache else None
+        if use_packed_dataset:
+            cos, sin = self.rotary_emb(value_states, max_seqlen)
+            cos = cos[position_ids].squeeze(0)
+            sin = sin[position_ids].squeeze(0)
+            assert sin.shape == cos.shape, "cos and sin must have the same shape"
+            _, rotary_dim = cos.shape
+            rotary_dim_half = rotary_dim // 2
+            cos_half = cos[:q_len, :rotary_dim_half]
+            sin_half = sin[:q_len, :rotary_dim_half]
+            query_states = apply_rotary_emb(query_states, cos_half, sin_half)
+            key_states = apply_rotary_emb(key_states, cos_half, sin_half) 
+        else:
+            query_states = query_states.transpose(1, 2)
+            key_states = key_states.transpose(1, 2)
+            value_states = value_states.transpose(1, 2)
+            cos, sin = self.rotary_emb(value_states, kv_seq_len)
+            query_states, key_states = apply_rotary_pos_emb(
+                query_states, key_states, cos, sin, position_ids)
 
-        kv_seq_len = key_states.shape[-2]
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+            if past_key_value is not None:
+                # reuse k, v, self_attention
+                key_states = torch.cat([past_key_value[0], key_states], dim=2)
+                value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
-        query_states = query_states.transpose(1, 2)
-        key_states = key_states.transpose(1, 2)
-        value_states = value_states.transpose(1, 2)
+            past_key_value = (key_states, value_states) if use_cache else None
+            query_states = query_states.transpose(1, 2)
+            key_states = key_states.transpose(1, 2)
+            value_states = value_states.transpose(1, 2)
 
-        attn_output = self._flash_attention_forward(
-            query_states, key_states, value_states, attention_mask, q_len
-        )
+        # attn_output = self._flash_attention_forward(
+        #     query_states, key_states, value_states, attention_mask, q_len
+        # )
+            
+        if use_packed_dataset:
+            attn_output = flash_attn_varlen_func(
+                query_states.flatten(0, 1),
+                key_states.flatten(0, 1),
+                value_states.flatten(0, 1),
+                cu_seqlens,
+                cu_seqlens,
+                max_seqlen,
+                max_seqlen,
+                0.0,
+                softmax_scale=None,
+                causal=True,
+                return_attn_probs=False,
+            ).unsqueeze(0)
+        else:
+            attn_output = flash_attn_func(
+                query_states, key_states, value_states, 0.0, softmax_scale=None, causal=True, return_attn_probs=False,
+            )
+        
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
         attn_output = self.o_proj(attn_output)
 
