@@ -8,13 +8,17 @@ from internlm.data import (
     build_valid_loader_with_data_type,
 )
 from internlm.initialize import initialize_distributed_env
+from internlm.model.registry import hf_config_initializer, model_initializer
 from internlm.monitor import internevo_monitor
 from internlm.train import initialize_model
 from internlm.utils.common import parse_args
-from internlm.model.registry import model_initializer, hf_config_initializer
 
-from huggingface_model.DiscoResearch.mixtral_7b_8expert.modeling_moe_mistral import MixtralForCausalLM
-from huggingface_model.DiscoResearch.mixtral_7b_8expert.configuration_moe_mistral import MixtralConfig
+from huggingface_model.DiscoResearch.mixtral_7b_8expert.configuration_moe_mistral import (
+    MixtralConfig,
+)
+from huggingface_model.DiscoResearch.mixtral_7b_8expert.modeling_moe_mistral import (
+    MixtralForCausalLM,
+)
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
