@@ -27,9 +27,7 @@ def main(args):
     model_initializer.register_module(gpc.config.model_type, LlamaForCausalLM)
     hf_config_initializer.register_module(gpc.config.model_type, LlamaConfig)
     if gpc.config.model_type == "hf":
-        hf_config_builder = hf_config_initializer.get_module(
-            module_name=gpc.config.model_type
-        )
+        hf_config_builder = hf_config_initializer.get_module(module_name=gpc.config.model_type)
         hf_cfg = hf_config_builder(return_dict=False)
         gpc.config.model.num_layers = hf_cfg.num_hidden_layers
         gpc.config.model.hidden_size = hf_cfg.hidden_size
