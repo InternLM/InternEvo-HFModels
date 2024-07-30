@@ -33,7 +33,7 @@ def main(args):
 
     # initialize model
     model = initialize_model()
-    
+
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()
 
