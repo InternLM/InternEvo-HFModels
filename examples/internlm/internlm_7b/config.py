@@ -4,7 +4,7 @@ HF_MODEL_NAME = "internlm/internlm-7b"
 JOB_NAME = f"train_{model_type}/{HF_MODEL_NAME}"
 DO_ALERT = False
 
-SEQ_LEN = 1024
+SEQ_LEN = 2048
 
 MODEL_ONLY_FOLDER = HF_MODEL_NAME
 # Ckpt folder format:
@@ -67,7 +67,7 @@ data = dict(
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
-    use_packed_dataset=False,
+    use_packed_dataset=True,
     # whether use shared memory to load meta files
     use_shm=False,
     # when use shm, the default shm_path is "/dev/shm/metacache"
@@ -145,7 +145,7 @@ model = dict(
     dtype="torch.bfloat16",  # Support: "torch.float16", "torch.half", "torch.bfloat16", "torch.float32", "torch.tf32"
     norm_type="rmsnorm",
     layer_norm_epsilon=1e-5,
-    use_flash_attn=False,
+    use_flash_attn=True,
     # Whether the odd and even columns of the query and key in the model are normally interleaved.
     # If it's True, the model's odd and even columns are normally ordered; if it's False,
     # it means that the model has prematurely concatenated all odd columns and even columns in front
