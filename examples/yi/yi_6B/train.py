@@ -8,13 +8,13 @@ from internlm.data import (
     build_valid_loader_with_data_type,
 )
 from internlm.initialize import initialize_distributed_env
+from internlm.model.registry import hf_config_initializer, model_initializer
 from internlm.monitor import internevo_monitor
 from internlm.train import initialize_model
 from internlm.utils.common import parse_args
-from internlm.model.registry import model_initializer, hf_config_initializer
 
-from huggingface_model.yi.yi_6B.modeling_yi import YiForCausalLM
 from huggingface_model.yi.yi_6B.configuration_yi import YiConfig
+from huggingface_model.yi.yi_6B.modeling_yi import YiForCausalLM
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
