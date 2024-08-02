@@ -1,4 +1,4 @@
-model_type = "hf"
+model_type = "HF"
 HF_MODEL_NAME = "baichuan-inc/Baichuan2-7B-Base"
 
 JOB_NAME = f"train_{model_type}/{HF_MODEL_NAME}"
