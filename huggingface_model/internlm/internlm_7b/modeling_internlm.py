@@ -494,10 +494,10 @@ class InternLMFlashAttention2(InternLMAttention):
                 cumulative_len=cu_seqlens,
                 max_seqlen=max_seqlen,
                 dropout_p=0.0,
-            ).unsqueeze(0)
+            )
         else:
             attn_output = hf_q_k_v_without_cu_seqlens(
-                query_states, key_states, value_states, dropout_p=0, softmax_scale=None, causal=True,
+                query_states, key_states, value_states, dropout_p=0.0, softmax_scale=None, causal=True,
             )
         
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
@@ -541,7 +541,7 @@ class InternLMFlashAttention2(InternLMAttention):
             cu_seqlens_q, cu_seqlens_k = cu_seq_lens
             max_seqlen_in_batch_q, max_seqlen_in_batch_k = max_seq_lens
 
-            attn_output_unpad = varlen_flash_attn(
+            attn_output_unpad = flash_attn_varlen_func(
                 query_states,
                 key_states,
                 value_states,
@@ -556,7 +556,7 @@ class InternLMFlashAttention2(InternLMAttention):
 
             attn_output = pad_input(attn_output_unpad, indices_q, batch_size, query_length)
         else:
-            attn_output = flash_attn_wo_mask(
+            attn_output = flash_attn_func(
                 query_states, key_states, value_states, dropout, softmax_scale=softmax_scale, causal=causal
             )
 
