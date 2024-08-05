@@ -8,13 +8,20 @@ from internlm.data import (
     build_valid_loader_with_data_type,
 )
 from internlm.initialize import initialize_distributed_env
-from internlm.model.registry import hf_config_initializer, model_initializer
+from internlm.model.registry import (
+    hf_config_initializer,
+    hf_rmsnorm_initializer,
+    model_initializer,
+)
 from internlm.monitor import internevo_monitor
 from internlm.train import initialize_model
 from internlm.utils.common import parse_args
 
 from huggingface_model.internlm.internlm_7b.configuration_internlm import InternLMConfig
-from huggingface_model.internlm.internlm_7b.modeling_internlm import InternLMForCausalLM
+from huggingface_model.internlm.internlm_7b.modeling_internlm import (
+    InternLMForCausalLM,
+    InternLMRMSNorm,
+)
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
@@ -22,6 +29,7 @@ def main(args):
     # register huggingface model and config for InternEvo
     model_initializer.register_module(gpc.config.model_type, InternLMForCausalLM)
     hf_config_initializer.register_module(gpc.config.model_type, InternLMConfig)
+    hf_rmsnorm_initializer.register_module(gpc.config.model_type, InternLMRMSNorm)
 
     # initialize model
     model = initialize_model()
