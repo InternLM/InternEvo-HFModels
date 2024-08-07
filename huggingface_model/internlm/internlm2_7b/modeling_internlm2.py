@@ -46,6 +46,9 @@ from transformers.utils import (
 )
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
+from internlm.model.modules.linear import new_linear
+from internlm.model.modules.embedding import Embedding1D
+from internlm.core.context.parallel_context import IS_REPLICA_ZERO_PARALLEL
 
 try:
     from transformers.generation.streamers import BaseStreamer
@@ -86,6 +89,8 @@ class InternLM2RMSNorm(nn.Module):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
+        for param in self.parameters():
+            setattr(param, IS_REPLICA_ZERO_PARALLEL, True)
 
     def forward(self, hidden_states):
         input_dtype = hidden_states.dtype
@@ -199,9 +204,9 @@ class InternLM2MLP(nn.Module):
         self.config = config
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        self.w1 = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.w3 = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.w2 = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.w1 = new_linear("w1", self.hidden_size, self.intermediate_size, bias=False)
+        self.w3 = new_linear("w3", self.hidden_size, self.intermediate_size, bias=False)
+        self.w2 = new_linear("w2", self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, x):
@@ -251,12 +256,13 @@ class InternLM2Attention(nn.Module):
                 f" and `num_heads`: {self.num_heads})."
             )
 
-        self.wqkv = nn.Linear(
+        self.wqkv = new_linear(
+            "wqkv", 
             self.hidden_size,
             (self.num_heads + 2 * self.num_key_value_heads) * self.head_dim,
             bias=config.bias,
         )
-        self.wo = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.bias)
+        self.wo = new_linear("wo", self.num_heads * self.head_dim, self.hidden_size, bias=config.bias)
 
         self._init_rope()
 
@@ -938,7 +944,7 @@ class InternLM2Model(InternLM2PreTrainedModel):
         self.vocab_size = config.vocab_size
         self.config = config
 
-        self.tok_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
+        self.tok_embeddings = Embedding1D(config.vocab_size, config.hidden_size, self.padding_idx)
 
         self.layers = nn.ModuleList(
             [InternLM2DecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
@@ -1159,7 +1165,7 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
         super().__init__(config)
         self.model = InternLM2Model(config)
         self.vocab_size = config.vocab_size
-        self.output = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.output = new_linear("output", config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
