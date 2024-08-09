@@ -15,7 +15,7 @@ from internlm.utils.common import parse_args
 
 from huggingface_model.internlm.internlm_7b.configuration_internlm import InternLMConfig
 from huggingface_model.internlm.internlm_7b.modeling_internlm import InternLMForCausalLM
-from huggingface_model.dispatch_utils import hf_model_dispatch
+
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
@@ -24,7 +24,7 @@ def main(args):
     hf_config_initializer.register_module(gpc.config.model_type, InternLMConfig)
 
     # initialize model
-    model = initialize_model(model_dispatch_func=hf_model_dispatch)
+    model = initialize_model()
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()

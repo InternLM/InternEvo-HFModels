@@ -19,6 +19,7 @@ import queue
 import threading
 from typing import List, Optional, Tuple, Union
 
+from internlm.core.context.parallel_context import IS_REPLICA_ZERO_PARALLEL
 import torch
 import torch.utils.checkpoint
 from torch import nn
@@ -40,8 +41,9 @@ from transformers.utils import (
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.model.ops.rotary_emb import apply_rotary_emb
-from internlm.model.ops.attention import isp_flash_attn_varlen_func
-
+from internlm.model.modules.embedding import Embedding1D
+from internlm.model.modules.linear import new_linear
+from internlm.model.ops.attention import hf_q_k_v_with_cu_seqlens, hf_q_k_v_without_cu_seqlens
 
 try:
     from transformers.generation.streamers import BaseStreamer
@@ -124,6 +126,8 @@ class InternLMRMSNorm(nn.Module):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
+        for param in self.parameters():
+            setattr(param, IS_REPLICA_ZERO_PARALLEL, True)
 
     def forward(self, hidden_states):
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
@@ -277,9 +281,9 @@ class InternLMMLP(nn.Module):
         hidden_act: str,
     ):
         super().__init__()
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.gate_proj = new_linear("w1", hidden_size, intermediate_size, bias=False)
+        self.down_proj = new_linear("w2", intermediate_size, hidden_size, bias=False)
+        self.up_proj = new_linear("w3", hidden_size, intermediate_size, bias=False)
         self.act_fn = ACT2FN[hidden_act]
 
     def forward(self, x):
@@ -303,10 +307,10 @@ class InternLMAttention(nn.Module):
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
-        self.k_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
-        self.v_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=config.bias)
+        self.q_proj = new_linear("wq", self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
+        self.k_proj = new_linear("wk", self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
+        self.v_proj = new_linear("wv", self.hidden_size, self.num_heads * self.head_dim, bias=config.bias)
+        self.o_proj = new_linear("wo", self.num_heads * self.head_dim, self.hidden_size, bias=config.bias)
         self.rotary_emb = self._init_rope()
         self.is_causal = True
 
@@ -483,17 +487,17 @@ class InternLMFlashAttention2(InternLMAttention):
         # )
             
         if use_packed_dataset:
-            attn_output = isp_flash_attn_varlen_func(
+            attn_output = hf_q_k_v_with_cu_seqlens(
                 query_states,
                 key_states,
                 value_states,
-                cu_seqlens=cu_seqlens,
+                cumulative_len=cu_seqlens,
                 max_seqlen=max_seqlen,
-                causal=True,
+                dropout_p=0.0,
             )
         else:
-            attn_output = flash_attn_func(
-                query_states, key_states, value_states, 0.0, softmax_scale=None, causal=True, return_attn_probs=False,
+            attn_output = hf_q_k_v_without_cu_seqlens(
+                query_states, key_states, value_states, dropout_p=0.0, softmax_scale=None, causal=True,
             )
         
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
@@ -706,7 +710,7 @@ class InternLMPreTrainedModel(PreTrainedModel):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.bias is not None:
                 module.bias.data.zero_()
-        elif isinstance(module, nn.Embedding):
+        elif isinstance(module, Embedding1D):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
@@ -790,8 +794,8 @@ class InternLMModel(InternLMPreTrainedModel):
         self.vocab_size = config.vocab_size
         self.config = config
 
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        
+        self.embed_tokens = Embedding1D(num_embeddings=config.vocab_size, embedding_dim=config.hidden_size, padding_idx=self.padding_idx)
+
         self.layers = nn.ModuleList([InternLMDecoderLayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = InternLMRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
@@ -971,7 +975,7 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
         super().__init__(config)
         self.model = InternLMModel(config)
 
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.lm_head = new_linear("head", config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
