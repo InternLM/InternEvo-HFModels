@@ -46,7 +46,6 @@ from transformers.utils import (
 )
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
-from internlm.model.ops.attention import isp_flash_attn_varlen_func
 
 try:
     from transformers.generation.streamers import BaseStreamer
@@ -79,14 +78,6 @@ def _get_unpad_data(attention_mask):
         max_seqlen_in_batch,
     )
 
-def repeat_kv_bshd(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
-    """The hidden states go from (batch, seqlen, num_key_value_heads, head_dim)
-    to (batch, seqlen, num_attention_heads, head_dim)"""
-    batch, slen, num_key_value_heads, head_dim = hidden_states.shape
-    if n_rep == 1:
-        return hidden_states
-    hidden_states = hidden_states[:, :, :, None, :].expand(batch, slen, num_key_value_heads, n_rep, head_dim)
-    return hidden_states.reshape(batch, slen, num_key_value_heads * n_rep, head_dim)
 
 class InternLM2RMSNorm(nn.Module):
     """InternLM2RMSNorm is equivalent to T5LayerNorm."""
@@ -489,23 +480,24 @@ class InternLM2FlashAttention2(InternLM2Attention):
             key_states = key_states.to(target_dtype)
             value_states = value_states.to(target_dtype)
 
-        # repeat kv for sequence parallel
-        key_states = repeat_kv_bshd(key_states, self.num_key_value_groups)
-        value_states = repeat_kv_bshd(value_states, self.num_key_value_groups)
-
         # attn_output = self._flash_attention_forward(
         #     query_states, key_states, value_states, attention_mask, q_len, dropout=dropout_rate
         # )
         
         if use_packed_dataset:
-            attn_output = isp_flash_attn_varlen_func(
-                query_states,
-                key_states,
-                value_states,
-                cu_seqlens=cu_seqlens,
-                max_seqlen=max_seqlen,
+            attn_output = flash_attn_varlen_func(
+                query_states.flatten(0, 1),
+                key_states.flatten(0, 1),
+                value_states.flatten(0, 1),
+                cu_seqlens,
+                cu_seqlens,
+                max_seqlen,
+                max_seqlen,
+                dropout_rate,
+                softmax_scale=None,
                 causal=True,
-            )
+                return_attn_probs=False,
+            ).unsqueeze(0)
         else:
             attn_output = flash_attn_func(
                 query_states, key_states, value_states, dropout_rate, softmax_scale=None, causal=True, return_attn_probs=False,
