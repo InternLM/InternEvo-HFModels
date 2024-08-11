@@ -46,6 +46,7 @@ from transformers.utils import (
 )
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
+from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
 
 try:
     from transformers.generation.streamers import BaseStreamer
@@ -77,7 +78,6 @@ def _get_unpad_data(attention_mask):
         cu_seqlens,
         max_seqlen_in_batch,
     )
-
 
 class InternLM2RMSNorm(nn.Module):
     """InternLM2RMSNorm is equivalent to T5LayerNorm."""
@@ -485,22 +485,18 @@ class InternLM2FlashAttention2(InternLM2Attention):
         # )
         
         if use_packed_dataset:
-            attn_output = flash_attn_varlen_func(
-                query_states.flatten(0, 1),
-                key_states.flatten(0, 1),
-                value_states.flatten(0, 1),
-                cu_seqlens,
-                cu_seqlens,
-                max_seqlen,
-                max_seqlen,
-                dropout_rate,
-                softmax_scale=None,
+            attn_output = isp_flash_attn_varlen_func(
+                query_states,
+                key_states,
+                value_states,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=max_seqlen,
                 causal=True,
-                return_attn_probs=False,
-            ).unsqueeze(0)
+                attention_dropout = dropout_rate,
+            )
         else:
-            attn_output = flash_attn_func(
-                query_states, key_states, value_states, dropout_rate, softmax_scale=None, causal=True, return_attn_probs=False,
+            attn_output = isp_flash_attn_func(
+                query_states, key_states, value_states, causal=True, attention_dropout=dropout_rate,
             )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()

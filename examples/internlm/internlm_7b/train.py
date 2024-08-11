@@ -13,6 +13,7 @@ from internlm.monitor import internevo_monitor
 from internlm.train import initialize_model
 from internlm.utils.common import parse_args
 
+from huggingface_model.dispatch_utils import hf_model_dispatch
 from huggingface_model.internlm.internlm_7b.configuration_internlm import InternLMConfig
 from huggingface_model.internlm.internlm_7b.modeling_internlm import InternLMForCausalLM
 
@@ -24,7 +25,7 @@ def main(args):
     hf_config_initializer.register_module(gpc.config.model_type, InternLMConfig)
 
     # initialize model
-    model = initialize_model()
+    model = initialize_model(model_dispatch_func=hf_model_dispatch)
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()
