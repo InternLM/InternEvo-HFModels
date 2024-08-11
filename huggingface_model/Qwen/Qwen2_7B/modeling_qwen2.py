@@ -31,8 +31,8 @@ from internlm.core.context.parallel_context import IS_REPLICA_ZERO_PARALLEL
 from internlm.model.modules.embedding import Embedding1D
 from internlm.model.modules.linear import new_linear
 from internlm.model.ops.attention import (
-    hf_q_k_v_with_cu_seqlens,
-    hf_q_k_v_without_cu_seqlens,
+    isp_flash_attn_varlen_func,
+    isp_flash_attn_func,
 )
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
@@ -455,22 +455,22 @@ class Qwen2FlashAttention2(Qwen2Attention):
             causal = self.is_causal and q_len != 1
 
         if use_packed_dataset:
-            attn_output = hf_q_k_v_with_cu_seqlens(
+            attn_output = isp_flash_attn_varlen_func(
                 query_states,
                 key_states,
                 value_states,
-                cumulative_len=cu_seqlens,
+                cu_seqlens=cu_seqlens,
                 max_seqlen=max_seqlen,
                 causal=causal,
-                dropout_p=dropout_rate,
+                attention_dropout=dropout_rate,
             )
         else:
-            attn_output = hf_q_k_v_without_cu_seqlens(
+            attn_output = isp_flash_attn_func(
                 query_states,
                 key_states,
                 value_states,
-                dropout_p=dropout_rate,
                 causal=causal,
+                attention_dropout=dropout_rate,        
             )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
