@@ -40,7 +40,7 @@ from transformers.utils import (
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.model.ops.rotary_emb import apply_rotary_emb
-from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
+from internlm.model.ops.attention import hf_q_k_v_with_cu_seqlens, hf_q_k_v_without_cu_seqlens
 
 
 try:
@@ -483,7 +483,7 @@ class InternLMFlashAttention2(InternLMAttention):
         # )
             
         if use_packed_dataset:
-            attn_output = isp_flash_attn_varlen_func(
+            attn_output = hf_q_k_v_with_cu_seqlens(
                 query_states,
                 key_states,
                 value_states,
@@ -492,7 +492,7 @@ class InternLMFlashAttention2(InternLMAttention):
                 causal=True,
             )
         else:
-            attn_output = isp_flash_attn_func(
+            attn_output = hf_q_k_v_without_cu_seqlens(
                 query_states, key_states, value_states, causal=True,
             )
         
