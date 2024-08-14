@@ -4,6 +4,9 @@ import importlib
 from collections import abc
 from typing import Any, Optional, Type, Union
 
+from internlm.core.context.parallel_context import global_context as gpc
+
+
 # adapted from https://github.com/open-mmlab/mmengine/blob/main/mmengine/config/lazy.py#L8
 class LazyObject:
     """LazyObject is used to lazily initialize the imported module during
@@ -220,6 +223,11 @@ LINEAR2NEW_LINEAR_NAME_MAPPING = dict(
 )
 
 
+RESET_PARAM_FUNC_MAPPING = dict(
+    internlm2_7b=LazyObject("huggingface_model.internlm.internlm2_7b", "reset_parameters"),
+)
+
+
 def replace_embed(model):
     def traverse(module):
         for name, child in module.named_children():
@@ -282,6 +290,9 @@ def hf_model_dispatch(model):
     replace_embed(model)
     replace_norm(model)
     replace_linear(model)
-
+    reset_parameters = RESET_PARAM_FUNC_MAPPING.get(gpc.config.HF_MODEL_NAME.split("/")[1].replace("-", "_"), None)
+    assert reset_parameters is not None, "reset_parameters need to be implemented."
+    reset_parameters = reset_parameters.build()
+    reset_parameters(model)
 
 __all__ = ["hf_model_dispatch"]
