@@ -46,7 +46,7 @@ from transformers.utils import (
 )
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
-from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
+from internlm.model.ops.attention import hf_q_k_v_with_cu_seqlens, hf_q_k_v_without_cu_seqlens
 
 try:
     from transformers.generation.streamers import BaseStreamer
@@ -485,7 +485,7 @@ class InternLM2FlashAttention2(InternLM2Attention):
         # )
         
         if use_packed_dataset:
-            attn_output = isp_flash_attn_varlen_func(
+            attn_output = hf_q_k_v_with_cu_seqlens(
                 query_states,
                 key_states,
                 value_states,
@@ -495,7 +495,7 @@ class InternLM2FlashAttention2(InternLM2Attention):
                 attention_dropout = dropout_rate,
             )
         else:
-            attn_output = isp_flash_attn_func(
+            attn_output = hf_q_k_v_without_cu_seqlens(
                 query_states, key_states, value_states, causal=True, attention_dropout=dropout_rate,
             )
 
@@ -1177,6 +1177,57 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
 
     def get_decoder(self):
         return self.model
+
+    def split_weights(self, first_layer, model_state_dict, state_dict, split_size, local_rank, row_dim):
+        for i in range(0, gpc.config.model.num_layers):
+            model_state_dict[f"model.layers.{i}.attention.wqkv.weight"] = torch.chunk(
+                state_dict.pop(f"model.layers.{i+first_layer}.attention.wqkv.weight"),
+                split_size,
+                dim=0,
+            )[local_rank]
+            model_state_dict[f"model.layers.{i}.attention.wo.weight"] = torch.chunk(
+                state_dict.pop(f"model.layers.{i+first_layer}.attention.wo.weight"),
+                split_size,
+                dim=row_dim,
+            )[local_rank]
+            model_state_dict[f"model.layers.{i}.feed_forward.w1.weight"] = torch.chunk(
+                state_dict.pop(f"model.layers.{i+first_layer}.feed_forward.w1.weight"),
+                split_size,
+                dim=0,
+            )[local_rank]
+            model_state_dict[f"model.layers.{i}.feed_forward.w3.weight"] = torch.chunk(
+                state_dict.pop(f"model.layers.{i+first_layer}.feed_forward.w3.weight"),
+                split_size,
+                dim=0,
+            )[local_rank]
+            model_state_dict[f"model.layers.{i}.feed_forward.w2.weight"] = torch.chunk(
+                state_dict.pop(f"model.layers.{i+first_layer}.feed_forward.w2.weight"),
+                split_size,
+                dim=row_dim,
+            )[local_rank]
+            model_state_dict[f"model.layers.{i}.attention_norm.weight"] = state_dict.pop(
+                f"model.layers.{i+first_layer}.attention_norm.weight"
+            )
+            model_state_dict[f"model.layers.{i}.ffn_norm.weight"] = state_dict.pop(
+                f"model.layers.{i+first_layer}.ffn_norm.weight"
+            )
+
+        if (gpc.get_local_rank(ParallelMode.PIPELINE) - 1 == 0) or (not gpc.is_using_parallel_mode(ParallelMode.PIPELINE)):
+            model_state_dict[f"model.tok_embeddings.weight"] = torch.chunk(
+                state_dict.pop(f"model.tok_embeddings.weight"),
+                split_size,
+                dim=1,
+            )[local_rank]
+
+        if gpc.is_last_rank(ParallelMode.PIPELINE):
+            model_state_dict[f"output.weight"] = torch.chunk(
+                state_dict.pop(f"output.weight"),
+                split_size,
+                dim=0,
+            )[local_rank]
+            model_state_dict[f"model.norm.weight"] = state_dict[f"model.norm.weight"]
+
+        return model_state_dict
 
     @add_start_docstrings_to_model_forward(InternLM2_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=CausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
