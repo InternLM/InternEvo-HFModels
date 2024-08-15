@@ -1,10 +1,12 @@
 # adapted from https://github.com/InternLM/xtuner/blob/main/xtuner/model/modules/dispatch/__init__.py
-
 import importlib
 from collections import abc
 from typing import Any, Optional, Type, Union
 
 from internlm.core.context.parallel_context import global_context as gpc
+from internlm.utils.logger import get_logger
+
+logger = get_logger(__file__)
 
 
 # adapted from https://github.com/open-mmlab/mmengine/blob/main/mmengine/config/lazy.py#L8
@@ -190,26 +192,22 @@ def is_seq_of(seq: Any, expected_type: Union[Type, tuple], seq_type: Type = None
             return False
     return True
 
+
 EMBED_REPLACE_MAPPING = dict(
     Embedding=LazyObject("internlm.model.modules.embedding", "Embedding1D"),
 )
+
+
+LINEAR_REPLACE_MAPPING = dict(
+    Linear=LazyObject("internlm.model.modules.linear", "new_linear"),
+)
+
 
 NORM_REPLACE_MAPPING = dict(
     InternLMRMSNorm=LazyObject("internlm.model.modules.norm", "new_layer_norm"),
     InternLM2RMSNorm=LazyObject("internlm.model.modules.norm", "new_layer_norm"),
 )
 
-LINEAR_REPLACE_MAPPING = dict(
-    Linear=LazyObject("internlm.model.modules.linear", "new_linear"),
-)
-
-NORM2NEW_NORM_NAME_MAPPING = dict(
-    input_layernorm="rmsnorm",
-    post_attention_layernorm="rmsnorm",
-    norm="rmsnorm",
-    attention_norm="rmsnorm",
-    ffn_norm="rmsnorm",
-)
 
 LINEAR2NEW_LINEAR_NAME_MAPPING = dict(
     q_proj="wq",
@@ -223,8 +221,18 @@ LINEAR2NEW_LINEAR_NAME_MAPPING = dict(
 )
 
 
+NORM2NEW_NORM_NAME_MAPPING = dict(
+    input_layernorm="rmsnorm",
+    post_attention_layernorm="rmsnorm",
+    norm="rmsnorm",
+    attention_norm="rmsnorm",
+    ffn_norm="rmsnorm",
+)
+
+
 RESET_PARAM_FUNC_MAPPING = dict(
     internlm2_7b=LazyObject("huggingface_model.internlm.internlm2_7b", "reset_parameters"),
+    internlm_7b=LazyObject("huggingface_model.internlm.internlm_7b", "reset_parameters"),
 )
 
 
@@ -239,25 +247,6 @@ def replace_embed(model):
                     num_embeddings=child.num_embeddings,
                     embedding_dim=child.embedding_dim,
                     padding_idx=child.padding_idx,
-                ).to(device=child.weight.device, dtype=child.weight.dtype)
-                setattr(module, name, child_new)
-            else:
-                traverse(child)
-
-    traverse(model)
-
-
-def replace_norm(model):
-    def traverse(module):
-        for name, child in module.named_children():
-            cls_name = type(child).__name__
-            if cls_name in NORM_REPLACE_MAPPING:
-                norm = NORM_REPLACE_MAPPING[cls_name]
-                norm = norm.build()
-                child_new = norm(
-                    norm_type=NORM2NEW_NORM_NAME_MAPPING[name],
-                    normalized_shape=child.weight.shape,
-                    eps=child.variance_epsilon,
                 ).to(device=child.weight.device, dtype=child.weight.dtype)
                 setattr(module, name, child_new)
             else:
@@ -286,13 +275,80 @@ def replace_linear(model):
     traverse(model)
 
 
-def hf_model_dispatch(model):
-    replace_embed(model)
-    replace_norm(model)
-    replace_linear(model)
-    reset_parameters = RESET_PARAM_FUNC_MAPPING.get(gpc.config.HF_MODEL_NAME.split("/")[1].replace("-", "_"), None)
-    assert reset_parameters is not None, "reset_parameters need to be implemented."
-    reset_parameters = reset_parameters.build()
-    reset_parameters(model)
+def replace_norm(model):
+    def traverse(module):
+        for name, child in module.named_children():
+            cls_name = type(child).__name__
+            if cls_name in NORM_REPLACE_MAPPING:
+                norm = NORM_REPLACE_MAPPING[cls_name]
+                norm = norm.build()
+                child_new = norm(
+                    norm_type=NORM2NEW_NORM_NAME_MAPPING[name],
+                    normalized_shape=child.weight.shape,
+                    eps=child.variance_epsilon,
+                ).to(device=child.weight.device, dtype=child.weight.dtype)
+                setattr(module, name, child_new)
+            else:
+                traverse(child)
+
+    traverse(model)
+
+
+def check_embed(model):
+    def traverse(module):
+        for name, child in module.named_children():
+            cls_name = type(child).__name__
+            if cls_name in EMBED_REPLACE_MAPPING:
+                embed = EMBED_REPLACE_MAPPING[cls_name]
+                embed = embed.build()
+                logger.warning(f"{name} of type {cls_name} is suggested to be replaced with type {embed.__name__}")
+            else:
+                traverse(child)
+
+    traverse(model)
+
+
+def check_linear(model):
+    def traverse(module):
+        for name, child in module.named_children():
+            cls_name = type(child).__name__
+            if cls_name in LINEAR_REPLACE_MAPPING:
+                linear = LINEAR_REPLACE_MAPPING[cls_name]
+                linear = linear.build()
+                logger.warning(f"{name} of type {cls_name} is suggested to be replaced with type {linear.__name__}")
+            else:
+                traverse(child)
+
+    traverse(model)
+
+
+def check_norm(model):
+    def traverse(module):
+        for name, child in module.named_children():
+            cls_name = type(child).__name__
+            if cls_name in NORM_REPLACE_MAPPING:
+                norm = NORM_REPLACE_MAPPING[cls_name]
+                norm = norm.build()
+                logger.warning(f"{name} of type {cls_name} is suggested to be replaced with type {norm.__name__}")
+            else:
+                traverse(child)
+
+    traverse(model)
+
+
+def hf_model_dispatch(model, auto_dispatch=False):
+    if auto_dispatch:
+        replace_embed(model)
+        replace_linear(model)
+        replace_norm(model)
+        reset_parameters = RESET_PARAM_FUNC_MAPPING.get(gpc.config.HF_MODEL_NAME.split("/")[1].replace("-", "_"), None)
+        assert reset_parameters is not None, "In auto_dispatch mode, function reset_parameters need to be implemented."
+        reset_parameters = reset_parameters.build()
+        reset_parameters(model)
+    else:
+        check_embed(model)
+        check_linear(model)
+        check_norm(model)
+
 
 __all__ = ["hf_model_dispatch"]

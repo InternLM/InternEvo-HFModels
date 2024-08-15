@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from functools import partial
+
 from internlm.core.context import global_context as gpc
 from internlm.core.trainer_builder import TrainerBuilder
 from internlm.data import (
@@ -25,7 +27,7 @@ def main(args):
     hf_config_initializer.register_module(gpc.config.model_type, InternLMConfig)
 
     # initialize model
-    model = initialize_model(model_dispatch_func=hf_model_dispatch)
+    model = initialize_model(model_dispatch_func=partial(hf_model_dispatch, auto_dispatch=True))
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()
