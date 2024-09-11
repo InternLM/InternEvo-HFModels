@@ -52,10 +52,6 @@ from .configuration_qwen2 import Qwen2Config
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
-from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
-
-if is_flash_attn_2_available():
-    from transformers.modeling_flash_attention_utils import _flash_attention_forward
 
 
 logger = logging.get_logger(__name__)
