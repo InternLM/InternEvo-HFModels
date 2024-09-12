@@ -39,6 +39,7 @@ from transformers.utils import logging, ContextManagers
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
+from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
 
 from .configuration_baichuan import BaichuanConfig
 
@@ -155,7 +156,6 @@ def apply_rotary_pos_emb(q, k, cos_, sin_, position_ids):
     k_embed = (k.float() * cos) + (rotate_half(k.float()) * sin)
     return q_embed.to(q.dtype), k_embed.to(k.dtype)
 
-
 class MLP(nn.Module):
     def __init__(
             self,
@@ -234,9 +234,9 @@ class Attention(nn.Module):
         past_key_value = (key_states, value_states) if use_cache else None
         if use_packed_dataset:
             attn_output = isp_flash_attn_varlen_func(
-                query_states,
-                key_states,
-                value_states,
+                query_states.transpose(1, 2),
+                key_states.transpose(1, 2),
+                value_states.transpose(1, 2),
                 cu_seqlens,
                 cu_seqlens,
                 max_seqlen,
@@ -247,7 +247,12 @@ class Attention(nn.Module):
             )
         else:
             attn_output = isp_flash_attn_func(
-                query_states, key_states, value_states, attention_dropout=0.0, softmax_scale=None, causal=False,
+                query_states.transpose(1, 2), 
+                key_states.transpose(1, 2), 
+                value_states.transpose(1, 2), 
+                attention_dropout=0.0, 
+                softmax_scale=None, 
+                causal=False,
             )
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
         attn_output = self.o_proj(attn_output)
@@ -508,11 +513,9 @@ class BaichuanModel(BaichuanPreTrainedModel):
         )
 
 
-class NormHead(nn.Module):
+class NormHead(nn.Linear):
     def __init__(self, hidden_size, vocab_size, bias=False):
-        super().__init__()
-        self.weight = nn.Parameter(torch.empty((vocab_size, hidden_size)))
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        super().__init__(hidden_size, vocab_size, bias)
         self.first_flag = True
 
     def forward(self, hidden_states):
@@ -799,3 +802,28 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             outputs = self.generate(input_ids, generation_config=generation_config)
             response = tokenizer.decode(outputs[0][len(input_ids[0]):], skip_special_tokens=True)
             return response
+
+    def reset_parameters(self, std=0.02):
+        def reset_attn_parameters(layer_idx, layer, use_scaled_init=True, std=0.02):
+            for name, param in layer.self_attn.named_parameters():
+                if param.ndim == 1:  # bias
+                    param.data.zero_()
+                elif "W_pack" in name:  # wqkv
+                    normal_(std=std)(param.data)
+                elif use_scaled_init:  # wo
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:  # wo
+                    normal_(std=std)(param.data)
+
+            for name, param in layer.mlp.named_parameters():
+                if use_scaled_init:
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:
+                    normal_(std=std)(param.data)
+        with torch.no_grad():
+            for _, param in self.model.embed_tokens.named_parameters():
+                normal_(std=std)(param)
+            for layer_idx, layer in enumerate(self.model.layers):
+                reset_attn_parameters(layer_idx, layer)
+            for _, param in self.lm_head.named_parameters():
+                normal_(std=std)(param)

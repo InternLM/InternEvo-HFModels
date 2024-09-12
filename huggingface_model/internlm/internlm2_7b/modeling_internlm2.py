@@ -501,7 +501,12 @@ class InternLM2FlashAttention2(InternLM2Attention):
             )
         else:
             attn_output = isp_flash_attn_func(
-                query_states, key_states, value_states, attention_dropout=dropout_rate, softmax_scale=None, causal=False,
+                query_states, 
+                key_states, 
+                value_states, 
+                attention_dropout=dropout_rate, 
+                softmax_scale=None, 
+                causal=False,
             )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
@@ -1525,7 +1530,7 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
             for name, param in layer.attention.named_parameters():
                 if param.ndim == 1:  # bias
                     param.data.zero_()
-                elif "wq" in name or "wk" in name or "wv" in name:
+                elif "wq" in name or "wk" in name or "wv" in name:  # wq, wk, wv
                     normal_(std=std)(param.data)
                 elif use_scaled_init:  # wo
                     scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)

@@ -109,7 +109,7 @@ model = dict(
         inject=True,
         interactive=False,
         modules=["embed", "linear", "norm"],
-        reset_params=False,
+        reset_params=True,
         data_helper=True,
     ),
 )
