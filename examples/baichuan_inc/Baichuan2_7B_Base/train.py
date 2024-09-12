@@ -11,17 +11,16 @@ from internlm.initialize import initialize_distributed_env
 from internlm.monitor import internevo_monitor
 from internlm.utils.common import parse_args, get_current_device
 
-from huggingface_model.qwen2.configuration_qwen2 import Qwen2Config
-from huggingface_model.qwen2.modeling_qwen2 import Qwen2ForCausalLM
+from huggingface_model.baichuan_inc.Baichuan2_7B_Base.configuration_baichuan import BaichuanConfig
+from huggingface_model.baichuan_inc.Baichuan2_7B_Base.modeling_baichuan import BaichuanForCausalLM
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
     # initialize model
-    model = Qwen2ForCausalLM(
-        Qwen2Config(
+    model = BaichuanForCausalLM(
+        BaichuanConfig(
             return_dict=False, 
-            _attn_implementation="flash_attention_2",
         )
     ).to(get_current_device())
 

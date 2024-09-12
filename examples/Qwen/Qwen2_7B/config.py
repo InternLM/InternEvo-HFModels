@@ -1,6 +1,6 @@
-model_type = "huggingface_baichuan2_7b"
+model_type = "huggingface_Qwen2_7B"
 
-JOB_NAME = f"train_{model_type}"
+JOB_NAME = f"train/Qwen/Qwen2_7B"
 DO_ALERT = False
 
 SEQ_LEN = 2048
@@ -24,7 +24,7 @@ TRAIN_FOLDER = "roneneldan/TinyStories"
 VALID_FOLDER = None
 data = dict(
     type="streaming",
-    tokenizer_path="baichuan-inc/Baichuan2-7B-Chat",
+    tokenizer_path="Qwen/Qwen2-7B",
     seq_len=SEQ_LEN,
     micro_num=4,
     micro_bsz=2,

@@ -1,6 +1,6 @@
 model_type = "huggingface_internlm_7b"
 
-JOB_NAME = f"train_{model_type}"
+JOB_NAME = f"train/internlm/internlm_7b"
 DO_ALERT = False
 
 SEQ_LEN = 2048

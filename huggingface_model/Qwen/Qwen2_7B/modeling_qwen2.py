@@ -52,6 +52,7 @@ from .configuration_qwen2 import Qwen2Config
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
 from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
+from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
 
 
 logger = logging.get_logger(__name__)
@@ -1143,6 +1144,30 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel):
         )
         return model_inputs
 
+    def reset_parameters(self, std=0.02):
+        def reset_attn_parameters(layer_idx, layer, use_scaled_init=True, std=0.02):
+            for name, param in layer.self_attn.named_parameters():
+                if param.ndim == 1:  # bias
+                    param.data.zero_()
+                elif "q_proj" in name or "k_proj" in name or "v_proj" in name:  # wq, wk, wv
+                    normal_(std=std)(param.data)
+                elif use_scaled_init:  # wo
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:  # wo
+                    normal_(std=std)(param.data)
+
+            for name, param in layer.mlp.named_parameters():
+                if use_scaled_init:
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:
+                    normal_(std=std)(param.data)
+        with torch.no_grad():
+            for _, param in self.model.embed_tokens.named_parameters():
+                normal_(std=std)(param)
+            for layer_idx, layer in enumerate(self.model.layers):
+                reset_attn_parameters(layer_idx, layer)
+            for _, param in self.lm_head.named_parameters():
+                normal_(std=std)(param)
 
 @add_start_docstrings(
     """
