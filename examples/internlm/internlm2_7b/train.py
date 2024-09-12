@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from functools import partial
-
 from internlm.core.context import global_context as gpc
 from internlm.core.trainer_builder import TrainerBuilder
 from internlm.data import (
@@ -10,12 +8,9 @@ from internlm.data import (
     build_valid_loader_with_data_type,
 )
 from internlm.initialize import initialize_distributed_env
-from internlm.model.registry import hf_config_initializer, model_initializer
 from internlm.monitor import internevo_monitor
-from internlm.train import initialize_model
-from internlm.utils.common import parse_args
+from internlm.utils.common import parse_args, get_current_device
 
-from huggingface_model.dispatch_utils import hf_model_dispatch
 from huggingface_model.internlm.internlm2_7b.configuration_internlm2 import (
     InternLM2Config,
 )
@@ -26,12 +21,13 @@ from huggingface_model.internlm.internlm2_7b.modeling_internlm2 import (
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
-    # register huggingface model and config for InternEvo
-    model_initializer.register_module(gpc.config.model_type, InternLM2ForCausalLM)
-    hf_config_initializer.register_module(gpc.config.model_type, InternLM2Config)
-
     # initialize model
-    model = initialize_model(model_dispatch_func=partial(hf_model_dispatch, auto_dispatch=True))
+    model = InternLM2ForCausalLM(
+        InternLM2Config(
+            return_dict=False, 
+            attn_implementation="flash_attention_2",
+        )
+    ).to(get_current_device())
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()
@@ -39,11 +35,8 @@ def main(args):
     # initialize validation dataloader
     val_dls = build_valid_loader_with_data_type()
 
-    # initialize kwargs
-    kwargs = vars(args) | {"dataset_types": dataset_types}
-
     # build trainer
-    trainer = TrainerBuilder(model, train_dl, val_dls, **kwargs)
+    trainer = TrainerBuilder(model, train_dl, val_dls, **(vars(args) | {"dataset_types": dataset_types}))
 
     # training
     trainer.fit()

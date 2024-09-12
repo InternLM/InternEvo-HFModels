@@ -20,8 +20,7 @@
 # limitations under the License.
 
 
-from .configuration_baichuan import BaichuanConfig
-from .generation_utils import build_chat_input, TextIterStreamer
+
 
 import math
 from typing import List, Optional, Tuple, Union
@@ -37,6 +36,12 @@ from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.generation.utils import GenerationConfig
 from transformers.utils import logging, ContextManagers
+from internlm.core.context import ParallelMode
+from internlm.core.context import global_context as gpc
+from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
+from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
+
+from .configuration_baichuan import BaichuanConfig
 
 import os
 from contextlib import contextmanager
@@ -151,7 +156,6 @@ def apply_rotary_pos_emb(q, k, cos_, sin_, position_ids):
     k_embed = (k.float() * cos) + (rotate_half(k.float()) * sin)
     return q_embed.to(q.dtype), k_embed.to(k.dtype)
 
-
 class MLP(nn.Module):
     def __init__(
             self,
@@ -202,6 +206,13 @@ class Attention(nn.Module):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
+        use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
+
+        if use_packed_dataset:
+            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
+            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
+            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
+
         proj = self.W_pack(hidden_states)
         proj = proj.unflatten(-1, (3, self.hidden_size)).unsqueeze(0).transpose(0, -2).squeeze(-2)
         query_states = proj[0].view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -221,18 +232,28 @@ class Attention(nn.Module):
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
         past_key_value = (key_states, value_states) if use_cache else None
-        if xops is not None and self.training:
-            attn_weights = None
-            query_states = query_states.transpose(1, 2)
-            key_states = key_states.transpose(1, 2)
-            value_states = value_states.transpose(1, 2)
-            attn_output = xops.memory_efficient_attention(
-                query_states, key_states, value_states, attn_bias=xops.LowerTriangularMask()
+        if use_packed_dataset:
+            attn_output = isp_flash_attn_varlen_func(
+                query_states.transpose(1, 2),
+                key_states.transpose(1, 2),
+                value_states.transpose(1, 2),
+                cu_seqlens,
+                cu_seqlens,
+                max_seqlen,
+                max_seqlen,
+                attention_dropout=0.0,
+                softmax_scale=None,
+                causal=False,
             )
         else:
-            with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_math=True, enable_mem_efficient=True):
-                attn_output = F.scaled_dot_product_attention(query_states, key_states, value_states, attn_mask = attention_mask)
-            attn_output = attn_output.transpose(1, 2)
+            attn_output = isp_flash_attn_func(
+                query_states.transpose(1, 2), 
+                key_states.transpose(1, 2), 
+                value_states.transpose(1, 2), 
+                attention_dropout=0.0, 
+                softmax_scale=None, 
+                causal=False,
+            )
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
         attn_output = self.o_proj(attn_output)
 
@@ -492,19 +513,18 @@ class BaichuanModel(BaichuanPreTrainedModel):
         )
 
 
-class NormHead(nn.Module):
+class NormHead(nn.Linear):
     def __init__(self, hidden_size, vocab_size, bias=False):
-        super().__init__()
-        self.weight = nn.Parameter(torch.empty((vocab_size, hidden_size)))
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        super().__init__(hidden_size, vocab_size, bias)
         self.first_flag = True
 
     def forward(self, hidden_states):
         if self.training:
             norm_weight = nn.functional.normalize(self.weight)
+            self.first_flag = True
         elif self.first_flag:
             self.first_flag = False
-            self.weight = nn.Parameter(nn.functional.normalize(self.weight))
+            self.weight.data = nn.functional.normalize(self.weight)
             norm_weight = self.weight
         else:
             norm_weight = self.weight
@@ -528,7 +548,7 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
         self.model = BaichuanModel(config)
 
         self.lm_head = NormHead(config.hidden_size, config.vocab_size, bias=False)
-        if hasattr(config, "quantization_config") and config.quantization_config['load_in_4bit']:
+        if hasattr(config, "quantization_config") and isinstance(config.quantization_config, dict) and config.quantization_config.get('load_in_4bit', False):
             try:
                 from .quantizer import quantize_offline, init_model_weight_int4
             except ImportError:
@@ -608,22 +628,23 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             model_file = os.path.join(pretrained_model_name_or_path, 'pytorch_model.bin')
             state_dict = torch.load(model_file, map_location="cpu") 
             model.is_quantized = True
-                        
+            
             device_map = kwargs.pop("device_map", None)
             torch_dtype = kwargs.pop("torch_dtype", None)
             
-            kwargs = {"no_split_module_classes": model._no_split_modules}
-            target_dtype = CustomDtype.INT4
-            max_memory = get_balanced_memory(
-                model,
-                dtype=target_dtype,
-                low_zero=(device_map == "balanced_low_0"),
-                max_memory=None,
-                **kwargs,
-            )
-            kwargs["max_memory"] = max_memory
-            
-            device_map = infer_auto_device_map(model, dtype=target_dtype, **kwargs)
+            if device_map is not None:
+                kwargs = {"no_split_module_classes": model._no_split_modules}
+                target_dtype = CustomDtype.INT4
+                max_memory = get_balanced_memory(
+                    model,
+                    dtype=target_dtype,
+                    low_zero=(device_map == "balanced_low_0"),
+                    max_memory=None,
+                    **kwargs,
+                )
+                kwargs["max_memory"] = max_memory
+                device_map = infer_auto_device_map(model, dtype=target_dtype, **kwargs)
+                
             model = init_model_weight_int4(config, model, state_dict)
             
             # Set model in evaluation mode to deactivate DropOut modules by default
@@ -782,3 +803,27 @@ class BaichuanForCausalLM(BaichuanPreTrainedModel):
             response = tokenizer.decode(outputs[0][len(input_ids[0]):], skip_special_tokens=True)
             return response
 
+    def reset_parameters(self, std=0.02):
+        def reset_attn_parameters(layer_idx, layer, use_scaled_init=True, std=0.02):
+            for name, param in layer.self_attn.named_parameters():
+                if param.ndim == 1:  # bias
+                    param.data.zero_()
+                elif "W_pack" in name:  # wqkv
+                    normal_(std=std)(param.data)
+                elif use_scaled_init:  # wo
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:  # wo
+                    normal_(std=std)(param.data)
+
+            for name, param in layer.mlp.named_parameters():
+                if use_scaled_init:
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:
+                    normal_(std=std)(param.data)
+        with torch.no_grad():
+            for _, param in self.model.embed_tokens.named_parameters():
+                normal_(std=std)(param)
+            for layer_idx, layer in enumerate(self.model.layers):
+                reset_attn_parameters(layer_idx, layer)
+            for _, param in self.lm_head.named_parameters():
+                normal_(std=std)(param)

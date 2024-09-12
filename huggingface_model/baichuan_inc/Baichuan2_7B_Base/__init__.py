@@ -1,7 +1,4 @@
-from .configuration_baichuan import BaichuanConfig
 from .modeling_baichuan import BaichuanForCausalLM
+from .configuration_baichuan import BaichuanConfig
 
-__all__ = [
-    "BaichuanConfig",
-    "BaichuanForCausalLM",
-]
+__all__ = ["BaichuanConfig", "BaichuanForCausalLM"]

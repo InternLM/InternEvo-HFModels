@@ -18,27 +18,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """PyTorch Qwen2 model."""
+
 import math
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-from internlm.core.context import ParallelMode
-from internlm.core.context import global_context as gpc
-from internlm.core.context.parallel_context import IS_REPLICA_ZERO_PARALLEL
-
-# from internlm.model.ops.rotary_emb import apply_rotary_emb
-from internlm.model.modules.embedding import Embedding1D
-from internlm.model.modules.linear import new_linear
-from internlm.model.ops.attention import (
-    isp_flash_attn_varlen_func,
-    isp_flash_attn_func,
-)
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
-from transformers.modeling_attn_mask_utils import AttentionMaskConverter
+from transformers.modeling_attn_mask_utils import (
+    AttentionMaskConverter,
+)
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -54,11 +47,12 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
-
 from .configuration_qwen2 import Qwen2Config
 
-if is_flash_attn_2_available():
-    from transformers.modeling_flash_attention_utils import _flash_attention_forward
+from internlm.core.context import ParallelMode
+from internlm.core.context import global_context as gpc
+from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
+from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
 
 
 logger = logging.get_logger(__name__)
@@ -77,8 +71,6 @@ class Qwen2RMSNorm(nn.Module):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
-        for param in self.parameters():
-            setattr(param, IS_REPLICA_ZERO_PARALLEL, True)
 
     def forward(self, hidden_states):
         input_dtype = hidden_states.dtype
@@ -168,13 +160,9 @@ class Qwen2MLP(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        # self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        # self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        # self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.gate_proj = new_linear("w1", self.hidden_size, self.intermediate_size, bias=False)
-        self.down_proj = new_linear("w2", self.intermediate_size, self.hidden_size, bias=False)
-        self.up_proj = new_linear("w3", self.hidden_size, self.intermediate_size, bias=False)
-
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, hidden_state):
@@ -226,14 +214,10 @@ class Qwen2Attention(nn.Module):
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        # self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=True)
-        # self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=True)
-        # self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=True)
-        # self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
-        self.q_proj = new_linear("wq", self.hidden_size, self.num_heads * self.head_dim, bias=True)
-        self.k_proj = new_linear("wk", self.hidden_size, self.num_key_value_heads * self.head_dim, bias=True)
-        self.v_proj = new_linear("wv", self.hidden_size, self.num_key_value_heads * self.head_dim, bias=True)
-        self.o_proj = new_linear("wo", self.num_heads * self.head_dim, self.hidden_size, bias=False)
+        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=True)
+        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=True)
+        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=True)
+        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
 
         self.rotary_emb = Qwen2RotaryEmbedding(
             self.head_dim,
@@ -347,6 +331,12 @@ class Qwen2FlashAttention2(Qwen2Attention):
 
         use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
 
+        if use_packed_dataset:
+            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
+            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
+            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
+            position_ids = position_ids.unsqueeze(0)
+
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
@@ -359,33 +349,17 @@ class Qwen2FlashAttention2(Qwen2Attention):
         if past_key_value is not None:
             if self.layer_idx is None:
                 raise ValueError(
-                    "The cache structure has changed since version v4.36. "
-                    f"If you are using {self.__class__.__name__} "
-                    "for auto-regressive decoding with k/v caching, "
-                    "please make sure to initialize the attention class "
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
-        if use_packed_dataset:
-            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
-            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
-            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
+        # Because the input can be padded, the absolute sequence length depends on the max position id.
+        rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
+        cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
 
-            assert position_ids is not None
-            rotary_seq_len = max(kv_seq_len, position_ids.max().item()) + 1
-            cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
-            # query_states, key_states = apply_rotary_pos_emb(query_states, key_states,
-            #                                                 cos, sin, position_ids)
-            cos_temp = cos[position_ids].unsqueeze(0).unsqueeze(0)
-            sin_temp = sin[position_ids].unsqueeze(0).unsqueeze(0)
-            query_states = (query_states * cos_temp) + (rotate_half(query_states) * sin_temp)
-            key_states = (key_states * cos_temp) + (rotate_half(key_states) * sin_temp)
-        else:
-            # Because the input can be padded, the absolute sequence length depends on the max position id.
-            rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
-            cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
             # Activate slicing cache only if the config has a value `sliding_windows` attribute
@@ -449,28 +423,22 @@ class Qwen2FlashAttention2(Qwen2Attention):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
-        if not self._flash_attn_uses_top_left_mask:
-            causal = self.is_causal
-        else:
-            causal = self.is_causal and q_len != 1
-
         if use_packed_dataset:
             attn_output = isp_flash_attn_varlen_func(
                 query_states,
                 key_states,
                 value_states,
-                cu_seqlens=cu_seqlens,
-                max_seqlen=max_seqlen,
-                causal=causal,
+                cu_seqlens,
+                cu_seqlens,
+                max_seqlen,
+                max_seqlen,
                 attention_dropout=dropout_rate,
+                softmax_scale=None,
+                causal=False,
             )
         else:
             attn_output = isp_flash_attn_func(
-                query_states,
-                key_states,
-                value_states,
-                causal=causal,
-                attention_dropout=dropout_rate,        
+                query_states, key_states, value_states, attention_dropout=dropout_rate, softmax_scale=None, causal=False,
             )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
@@ -696,7 +664,7 @@ class Qwen2PreTrainedModel(PreTrainedModel):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.bias is not None:
                 module.bias.data.zero_()
-        elif isinstance(module, Embedding1D):
+        elif isinstance(module, nn.Embedding):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
@@ -793,11 +761,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
-        # self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        self.embed_tokens = Embedding1D(
-            num_embeddings=config.vocab_size, embedding_dim=config.hidden_size, padding_idx=self.padding_idx
-        )
-
+        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = nn.ModuleList(
             [Qwen2DecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
@@ -985,7 +949,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
                 raise ValueError("Custom 4D attention mask should be passed in inverted form with max==0`")
             causal_mask = attention_mask
         else:
-            causal_mask = torch.full((sequence_length, target_length), fill_value=min_dtype, dtype=dtype, device=device)
+            causal_mask = torch.full(
+                (sequence_length, target_length), fill_value=min_dtype, dtype=dtype, device=device
+            )
             if sequence_length != 1:
                 causal_mask = torch.triu(causal_mask, diagonal=1)
             causal_mask *= torch.arange(target_length, device=device) > cache_position.reshape(-1, 1)
@@ -1019,8 +985,7 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel):
         super().__init__(config)
         self.model = Qwen2Model(config)
         self.vocab_size = config.vocab_size
-        # self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        self.lm_head = new_linear("head", config.hidden_size, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1179,6 +1144,30 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel):
         )
         return model_inputs
 
+    def reset_parameters(self, std=0.02):
+        def reset_attn_parameters(layer_idx, layer, use_scaled_init=True, std=0.02):
+            for name, param in layer.self_attn.named_parameters():
+                if param.ndim == 1:  # bias
+                    param.data.zero_()
+                elif "q_proj" in name or "k_proj" in name or "v_proj" in name:  # wq, wk, wv
+                    normal_(std=std)(param.data)
+                elif use_scaled_init:  # wo
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:  # wo
+                    normal_(std=std)(param.data)
+
+            for name, param in layer.mlp.named_parameters():
+                if use_scaled_init:
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:
+                    normal_(std=std)(param.data)
+        with torch.no_grad():
+            for _, param in self.model.embed_tokens.named_parameters():
+                normal_(std=std)(param)
+            for layer_idx, layer in enumerate(self.model.layers):
+                reset_attn_parameters(layer_idx, layer)
+            for _, param in self.lm_head.named_parameters():
+                normal_(std=std)(param)
 
 @add_start_docstrings(
     """

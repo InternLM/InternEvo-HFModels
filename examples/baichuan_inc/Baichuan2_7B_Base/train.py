@@ -8,35 +8,21 @@ from internlm.data import (
     build_valid_loader_with_data_type,
 )
 from internlm.initialize import initialize_distributed_env
-from internlm.model.registry import hf_config_initializer, model_initializer
 from internlm.monitor import internevo_monitor
-from internlm.train import initialize_model
-from internlm.utils.common import parse_args
+from internlm.utils.common import parse_args, get_current_device
 
-from huggingface_model.baichuan_inc.Baichuan2_7B_Base.configuration_baichuan import (
-    BaichuanConfig,
-)
-from huggingface_model.baichuan_inc.Baichuan2_7B_Base.modeling_baichuan import (
-    BaichuanForCausalLM,
-)
+from huggingface_model.baichuan_inc.Baichuan2_7B_Base.configuration_baichuan import BaichuanConfig
+from huggingface_model.baichuan_inc.Baichuan2_7B_Base.modeling_baichuan import BaichuanForCausalLM
 
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
-    # register huggingface model and config for InternEvo
-    model_initializer.register_module(gpc.config.model_type, BaichuanForCausalLM)
-    hf_config_initializer.register_module(gpc.config.model_type, BaichuanConfig)
-    if gpc.config.model_type == "hf":
-        hf_config_builder = hf_config_initializer.get_module(module_name=gpc.config.model_type)
-        hf_cfg = hf_config_builder(return_dict=False)
-        gpc.config.model.num_layers = hf_cfg.num_hidden_layers
-        gpc.config.model.hidden_size = hf_cfg.hidden_size
-        gpc.config.model.num_attention_heads = hf_cfg.num_attention_heads
-        gpc.config.model.mlp_ratio = hf_cfg.intermediate_size / hf_cfg.hidden_size
-        gpc.config.model.vocab_size = hf_cfg.vocab_size
-
     # initialize model
-    model = initialize_model()
+    model = BaichuanForCausalLM(
+        BaichuanConfig(
+            return_dict=False, 
+        )
+    ).to(get_current_device())
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()
@@ -44,11 +30,8 @@ def main(args):
     # initialize validation dataloader
     val_dls = build_valid_loader_with_data_type()
 
-    # initialize kwargs
-    kwargs = vars(args) | {"dataset_types": dataset_types}
-
     # build trainer
-    trainer = TrainerBuilder(model, train_dl, val_dls, **kwargs)
+    trainer = TrainerBuilder(model, train_dl, val_dls, **(vars(args) | {"dataset_types": dataset_types}))
 
     # training
     trainer.fit()

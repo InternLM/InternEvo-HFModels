@@ -8,10 +8,8 @@ from internlm.data import (
     build_valid_loader_with_data_type,
 )
 from internlm.initialize import initialize_distributed_env
-from internlm.model.registry import hf_config_initializer, model_initializer
 from internlm.monitor import internevo_monitor
-from internlm.train import initialize_model
-from internlm.utils.common import parse_args
+from internlm.utils.common import parse_args, get_current_device
 
 from huggingface_model.Qwen.Qwen2_7B.configuration_qwen2 import Qwen2Config
 from huggingface_model.Qwen.Qwen2_7B.modeling_qwen2 import Qwen2ForCausalLM
@@ -19,12 +17,13 @@ from huggingface_model.Qwen.Qwen2_7B.modeling_qwen2 import Qwen2ForCausalLM
 
 @internevo_monitor(feishu_alert=True, clean_run=True)
 def main(args):
-    # register huggingface model and config for InternEvo
-    model_initializer.register_module(gpc.config.model_type, Qwen2ForCausalLM)
-    hf_config_initializer.register_module(gpc.config.model_type, Qwen2Config)
-
     # initialize model
-    model = initialize_model()
+    model = Qwen2ForCausalLM(
+        Qwen2Config(
+            return_dict=False, 
+            _attn_implementation="flash_attention_2",
+        )
+    ).to(get_current_device())
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()
@@ -32,11 +31,8 @@ def main(args):
     # initialize validation dataloader
     val_dls = build_valid_loader_with_data_type()
 
-    # initialize kwargs
-    kwargs = vars(args) | {"dataset_types": dataset_types}
-
     # build trainer
-    trainer = TrainerBuilder(model, train_dl, val_dls, **kwargs)
+    trainer = TrainerBuilder(model, train_dl, val_dls, **(vars(args) | {"dataset_types": dataset_types}))
 
     # training
     trainer.fit()

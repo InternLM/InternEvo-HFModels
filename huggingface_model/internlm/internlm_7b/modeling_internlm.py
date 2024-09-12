@@ -39,9 +39,9 @@ from transformers.utils import (
 
 from internlm.core.context import ParallelMode
 from internlm.core.context import global_context as gpc
+from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
+from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
 from internlm.model.ops.rotary_emb import apply_rotary_emb
-from internlm.model.ops.attention import hf_q_k_v_with_cu_seqlens, hf_q_k_v_without_cu_seqlens
-
 
 try:
     from transformers.generation.streamers import BaseStreamer
@@ -411,40 +411,20 @@ class InternLMFlashAttention2(InternLMAttention):
         use_cache: bool = False,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-
         # InternLMFlashAttention2 attention does not support output_attentions
         bsz, q_len, _ = hidden_states.size()
-        
+
         use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
-        
+
         if use_packed_dataset:
             assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
             cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
             max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
 
-        # query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        # key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        # value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
+        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
+        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
 
-        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim) # (bsz, q_len, num_heads, head_dim)
-        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)  # (bsz, q_len, num_heads, head_dim)
-        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)  # (bsz, q_len, num_heads, head_dim)
-
-        # if past_key_value is not None:
-        #     # reuse k, v, self_attention
-        #     key_states = torch.cat([past_key_value[0], key_states], dim=2)
-        #     value_states = torch.cat([past_key_value[1], value_states], dim=2)
-
-        # past_key_value = (key_states, value_states) if use_cache else None
-
-        # kv_seq_len = key_states.shape[-2]
-        # cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-
-        # query_states = query_states.transpose(1, 2)
-        # key_states = key_states.transpose(1, 2)
-        # value_states = value_states.transpose(1, 2)
-        
         kv_seq_len = key_states.shape[-3]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
@@ -478,24 +458,28 @@ class InternLMFlashAttention2(InternLMAttention):
             key_states = key_states.transpose(1, 2)
             value_states = value_states.transpose(1, 2)
 
-        # attn_output = self._flash_attention_forward(
-        #     query_states, key_states, value_states, attention_mask, q_len
-        # )
-            
         if use_packed_dataset:
-            attn_output = hf_q_k_v_with_cu_seqlens(
+            attn_output = isp_flash_attn_varlen_func(
                 query_states,
                 key_states,
                 value_states,
-                cu_seqlens=cu_seqlens,
-                max_seqlen=max_seqlen,
-                causal=True,
+                cu_seqlens,
+                cu_seqlens,
+                max_seqlen,
+                max_seqlen,
+                attention_dropout=0.0,
+                softmax_scale=None,
+                causal=False,
             )
         else:
-            attn_output = hf_q_k_v_without_cu_seqlens(
-                query_states, key_states, value_states, causal=True,
+            attn_output = isp_flash_attn_func(
+                query_states, 
+                key_states, 
+                value_states, 
+                attention_dropout=0.0, 
+                softmax_scale=None, 
+                causal=False,
             )
-        
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
         attn_output = self.o_proj(attn_output)
 
@@ -994,67 +978,6 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
     def get_decoder(self):
         return self.model
 
-    def split_weights(self, first_layer, model_state_dict, state_dict, split_size, local_rank, row_dim):
-        for i in range(0, gpc.config.model.num_layers):
-            model_state_dict[f"model.layers.{i}.self_attn.q_proj.weight"] = torch.chunk(
-                state_dict.pop(f"model.layers.{i+first_layer}.self_attn.q_proj.weight"),
-                split_size,
-                dim=0,
-            )[local_rank]
-            model_state_dict[f"model.layers.{i}.self_attn.k_proj.weight"] = torch.chunk(
-                state_dict.pop(f"model.layers.{i+first_layer}.self_attn.k_proj.weight"),
-                split_size,
-                dim=0,
-            )[local_rank]
-            model_state_dict[f"model.layers.{i}.self_attn.v_proj.weight"] = torch.chunk(
-                state_dict.pop(f"model.layers.{i+first_layer}.self_attn.v_proj.weight"),
-                split_size,
-                dim=0,
-            )[local_rank]
-            model_state_dict[f"model.layers.{i}.self_attn.o_proj.weight"] = torch.chunk(
-                state_dict.pop(f"model.layers.{i+first_layer}.self_attn.o_proj.weight"),
-                split_size,
-                dim=0,
-            )[local_rank]
-            model_state_dict[f"model.layers.{i}.mlp.gate_proj.weight"] = torch.chunk(
-                state_dict.pop(f"model.layers.{i+first_layer}.mlp.gate_proj.weight"),
-                split_size,
-                dim=0,
-            )[local_rank]
-            model_state_dict[f"model.layers.{i}.mlp.down_proj.weight"] = torch.chunk(
-                state_dict.pop(f"model.layers.{i+first_layer}.mlp.down_proj.weight"),
-                split_size,
-                dim=0,
-            )[local_rank]
-            model_state_dict[f"model.layers.{i}.mlp.up_proj.weight"] = torch.chunk(
-                state_dict.pop(f"model.layers.{i+first_layer}.mlp.up_proj.weight"),
-                split_size,
-                dim=row_dim,
-            )[local_rank]
-            model_state_dict[f"model.layers.{i}.input_layernorm.weight"] = state_dict.pop(
-                f"model.layers.{i+first_layer}.input_layernorm.weight"
-            )
-            model_state_dict[f"model.layers.{i}.post_attention_layernorm.weight"] = state_dict.pop(
-                f"model.layers.{i+first_layer}.post_attention_layernorm.weight"
-            )
-
-        if (gpc.get_local_rank(ParallelMode.PIPELINE) - 1 == 0) or (not gpc.is_using_parallel_mode(ParallelMode.PIPELINE)):
-            model_state_dict[f"model.embed_tokens.weight"] = torch.chunk(
-                state_dict.pop(f"model.embed_tokens.weight"),
-                split_size,
-                dim=1,
-            )[local_rank]
-
-        if gpc.is_last_rank(ParallelMode.PIPELINE):
-            model_state_dict[f"lm_head.weight"] = torch.chunk(
-                state_dict.pop(f"lm_head.weight"),
-                split_size,
-                dim=0,
-            )[local_rank]
-            model_state_dict[f"model.norm.weight"] = state_dict[f"model.norm.weight"]
-
-        return model_state_dict
-
     @add_start_docstrings_to_model_forward(INTERNLM_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=CausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
     def forward(
@@ -1309,6 +1232,32 @@ class InternLMForCausalLM(InternLMPreTrainedModel):
                 yield res
 
         return consumer()
+
+    def reset_parameters(self, std=0.02):
+        def reset_attn_parameters(layer_idx, layer, use_scaled_init=True, std=0.02):
+            for name, param in layer.self_attn.named_parameters():
+                if param.ndim == 1:  # bias
+                    param.data.zero_()
+                elif "q_proj" in name or "k_proj" in name or "v_proj" in name:  # wq, wk, wv
+                    normal_(std=std)(param.data)
+                elif use_scaled_init:  # wo
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:  # wo
+                    normal_(std=std)(param.data)
+
+            for name, param in layer.mlp.named_parameters():
+                if use_scaled_init:
+                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
+                else:
+                    normal_(std=std)(param.data)
+        with torch.no_grad():
+            for _, param in self.model.embed_tokens.named_parameters():
+                normal_(std=std)(param)
+            for layer_idx, layer in enumerate(self.model.layers):
+                reset_attn_parameters(layer_idx, layer)
+            for _, param in self.lm_head.named_parameters():
+                normal_(std=std)(param)
+
 
 
 @add_start_docstrings(
