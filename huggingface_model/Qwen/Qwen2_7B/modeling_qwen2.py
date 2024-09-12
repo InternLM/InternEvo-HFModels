@@ -330,12 +330,12 @@ class Qwen2FlashAttention2(Qwen2Attention):
         bsz, q_len, _ = hidden_states.size()
 
         use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
-
+        if position_ids.ndimension() == 1:
+            position_ids = position_ids.unsqueeze(0)
         if use_packed_dataset:
             assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
             cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
             max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
-            position_ids = position_ids.unsqueeze(0)
 
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
@@ -438,7 +438,12 @@ class Qwen2FlashAttention2(Qwen2Attention):
             )
         else:
             attn_output = isp_flash_attn_func(
-                query_states, key_states, value_states, attention_dropout=dropout_rate, softmax_scale=None, causal=False,
+                query_states, 
+                key_states, 
+                value_states, 
+                attention_dropout=dropout_rate, 
+                softmax_scale=None, 
+                causal=False,
             )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()

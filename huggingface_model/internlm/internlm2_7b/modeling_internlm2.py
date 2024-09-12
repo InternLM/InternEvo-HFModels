@@ -417,12 +417,12 @@ class InternLM2FlashAttention2(InternLM2Attention):
         bsz, q_len, _ = hidden_states.size()
 
         use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
-
+        if position_ids.ndimension() == 1:
+            position_ids = position_ids.unsqueeze(0)
         if use_packed_dataset:
             assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
             cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
             max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
-            position_ids = position_ids.unsqueeze(0)
 
         qkv_states = self.wqkv(hidden_states)
 
