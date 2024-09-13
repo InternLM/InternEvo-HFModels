@@ -1,6 +1,6 @@
---- huggingface_model/internlm/internlm_7b/modeling_internlm.py	2024-09-13 15:56:33.650009000 +0800
-+++ huggingface_model/internlm/internlm_7b/modeling_internlm.py	2024-09-13 15:56:05.331844000 +0800
-@@ -37,6 +37,12 @@
+--- huggingface_model/internlm/internlm_7b/modeling_internlm.py	2024-09-13 19:29:19.813677000 +0800
++++ huggingface_model/internlm/internlm_7b/modeling_internlm.py	2024-09-13 19:29:10.583580000 +0800
+@@ -37,6 +37,11 @@
      replace_return_docstrings,
  )
  
@@ -8,72 +8,26 @@
 +from internlm.core.context import global_context as gpc
 +from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
 +from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
-+from internlm.model.ops.rotary_emb import apply_rotary_emb
 +
  try:
      from transformers.generation.streamers import BaseStreamer
  except:  # noqa # pylint: disable=bare-except
-@@ -408,28 +414,71 @@
+@@ -408,6 +413,12 @@
          # InternLMFlashAttention2 attention does not support output_attentions
          bsz, q_len, _ = hidden_states.size()
  
--        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
--        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
--        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
 +        use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
 +        if use_packed_dataset:
 +            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
 +            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
 +            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
 +
-+        query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-+        key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
-+        value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim)
- 
-+        kv_seq_len = key_states.shape[-3]
-         if past_key_value is not None:
--            # reuse k, v, self_attention
--            key_states = torch.cat([past_key_value[0], key_states], dim=2)
--            value_states = torch.cat([past_key_value[1], value_states], dim=2)
--
--        past_key_value = (key_states, value_states) if use_cache else None
--
--        kv_seq_len = key_states.shape[-2]
--        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
--        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-+            kv_seq_len += past_key_value[0].shape[-2]
- 
--        query_states = query_states.transpose(1, 2)
--        key_states = key_states.transpose(1, 2)
--        value_states = value_states.transpose(1, 2)
-+        if use_packed_dataset:
-+            cos, sin = self.rotary_emb(value_states, max_seqlen)
-+            cos = cos[position_ids].squeeze(0)
-+            sin = sin[position_ids].squeeze(0)
-+            assert sin.shape == cos.shape, "cos and sin must have the same shape"
-+            _, rotary_dim = cos.shape
-+            rotary_dim_half = rotary_dim // 2
-+            cos_half = cos[:q_len, :rotary_dim_half]
-+            sin_half = sin[:q_len, :rotary_dim_half]
-+            query_states = apply_rotary_emb(query_states, cos_half, sin_half)
-+            key_states = apply_rotary_emb(key_states, cos_half, sin_half) 
-+        else:
-+            query_states = query_states.transpose(1, 2)
-+            key_states = key_states.transpose(1, 2)
-+            value_states = value_states.transpose(1, 2)
-+            cos, sin = self.rotary_emb(value_states, kv_seq_len)
-+            query_states, key_states = apply_rotary_pos_emb(
-+                query_states, key_states, cos, sin, position_ids)
-+
-+            if past_key_value is not None:
-+                # reuse k, v, self_attention
-+                key_states = torch.cat([past_key_value[0], key_states], dim=2)
-+                value_states = torch.cat([past_key_value[1], value_states], dim=2)
-+
-+            past_key_value = (key_states, value_states) if use_cache else None
-+            query_states = query_states.transpose(1, 2)
-+            key_states = key_states.transpose(1, 2)
-+            value_states = value_states.transpose(1, 2)
+         query_states = self.q_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+         key_states = self.k_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+         value_states = self.v_proj(hidden_states).view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+@@ -427,9 +438,28 @@
+         key_states = key_states.transpose(1, 2)
+         value_states = value_states.transpose(1, 2)
  
 -        attn_output = self._flash_attention_forward(
 -            query_states, key_states, value_states, attention_mask, q_len
@@ -103,7 +57,7 @@
          attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
          attn_output = self.o_proj(attn_output)
  
-@@ -1183,6 +1232,32 @@
+@@ -1183,6 +1213,30 @@
  
          return consumer()
  
@@ -131,8 +85,6 @@
 +                reset_attn_parameters(layer_idx, layer)
 +            for _, param in self.lm_head.named_parameters():
 +                normal_(std=std)(param)
-+
-+
  
  @add_start_docstrings(
      """
