@@ -27,7 +27,7 @@ data = dict(
     tokenizer_path="meta-llama/Llama-2-7b-hf",
     seq_len=SEQ_LEN,
     micro_num=4,
-    micro_bsz=2,
+    micro_bsz=1,
     valid_micro_num=4,
     valid_every=0,
     pack_sample_into_one=False,
@@ -39,7 +39,7 @@ data = dict(
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
-    use_packed_dataset=True,
+    use_packed_dataset=False,
     use_shm=False,
 )
 
@@ -109,7 +109,7 @@ model = dict(
         inject=True,
         interactive=False,
         modules=["embed", "linear", "norm"],
-        reset_params=True,
+        reset_params=False,
         data_helper=True,
     ),
 )
@@ -117,9 +117,9 @@ model = dict(
 
 parallel = dict(
     zero1=dict(size=-1),
-    tensor=dict(size=2, mode="isp"),
+    tensor=dict(size=1, mode="mtp"),
     pipeline=dict(size=1, interleaved_overlap=True),
-    weight=dict(size=2, overlap=False, memory_pool=True),
+    weight=dict(size=1, overlap=False, memory_pool=True),
 )
 
 cudnn_deterministic = False
