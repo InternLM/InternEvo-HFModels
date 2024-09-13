@@ -1,5 +1,5 @@
 --- huggingface_model/baichuan_inc/Baichuan2_7B_Base/modeling_baichuan.py	2024-09-13 18:20:42.814214000 +0800
-+++ modeling_baichuan.py	2024-09-13 18:48:00.774356000 +0800
++++ huggingface_model/baichuan_inc/Baichuan2_7B_Base/modeling_baichuan.py	2024-09-13 18:48:00.774356000 +0800
 @@ -38,6 +38,11 @@
  from transformers.generation.utils import GenerationConfig
  from transformers.utils import logging, ContextManagers

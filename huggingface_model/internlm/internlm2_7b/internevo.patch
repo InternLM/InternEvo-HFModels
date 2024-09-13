@@ -1,5 +1,5 @@
 --- huggingface_model/internlm/internlm2_7b/modeling_internlm2.py	2024-09-13 16:17:30.598609000 +0800
-+++ huggingface_model_updated/internlm/internlm2_7b/modeling_internlm2.py	2024-09-13 15:56:05.381497000 +0800
++++ huggingface_model/internlm/internlm2_7b/modeling_internlm2.py	2024-09-13 15:56:05.381497000 +0800
 @@ -45,6 +45,11 @@
      replace_return_docstrings,
  )

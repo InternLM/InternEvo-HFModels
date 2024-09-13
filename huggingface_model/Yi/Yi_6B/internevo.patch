@@ -1,5 +1,5 @@
 --- huggingface_model/Yi/Yi_6B/modeling_yi.py	2024-09-13 16:45:55.823046000 +0800
-+++ huggingface_model_updated/Yi/Yi_6B/modeling_yi.py	2024-09-13 15:56:05.669004000 +0800
++++ huggingface_model/Yi/Yi_6B/modeling_yi.py	2024-09-13 15:56:05.669004000 +0800
 @@ -23,6 +23,11 @@
      replace_return_docstrings,
  )
