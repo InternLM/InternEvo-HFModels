@@ -45,11 +45,6 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
-from internlm.core.context import ParallelMode
-from internlm.core.context import global_context as gpc
-from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
-from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
-
 try:
     from transformers.generation.streamers import BaseStreamer
 except Exception:
@@ -416,12 +411,6 @@ class InternLM2FlashAttention2(InternLM2Attention):
 
         bsz, q_len, _ = hidden_states.size()
 
-        use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
-        if use_packed_dataset:
-            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
-            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
-            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
-
         qkv_states = self.wqkv(hidden_states)
 
         qkv_states = rearrange(
@@ -484,28 +473,9 @@ class InternLM2FlashAttention2(InternLM2Attention):
             key_states = key_states.to(target_dtype)
             value_states = value_states.to(target_dtype)
 
-        if use_packed_dataset:
-            attn_output = isp_flash_attn_varlen_func(
-                query_states,
-                key_states,
-                value_states,
-                cu_seqlens,
-                cu_seqlens,
-                max_seqlen,
-                max_seqlen,
-                attention_dropout=dropout_rate,
-                softmax_scale=None,
-                causal=False,
-            )
-        else:
-            attn_output = isp_flash_attn_func(
-                query_states, 
-                key_states, 
-                value_states, 
-                attention_dropout=dropout_rate, 
-                softmax_scale=None, 
-                causal=False,
-            )
+        attn_output = self._flash_attention_forward(
+            query_states, key_states, value_states, attention_mask, q_len, dropout=dropout_rate
+        )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
         attn_output = self.wo(attn_output)
@@ -1523,31 +1493,6 @@ class InternLM2ForCausalLM(InternLM2PreTrainedModel):
 
         return consumer()
 
-    def reset_parameters(self, std=0.02):
-        def reset_attn_parameters(layer_idx, layer, use_scaled_init=True, std=0.02):
-            for name, param in layer.attention.named_parameters():
-                if param.ndim == 1:  # bias
-                    param.data.zero_()
-                elif "wq" in name or "wk" in name or "wv" in name:  # wq, wk, wv
-                    normal_(std=std)(param.data)
-                elif use_scaled_init:  # wo
-                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
-                else:  # wo
-                    normal_(std=std)(param.data)
-
-            for name, param in layer.feed_forward.named_parameters():
-                if use_scaled_init:
-                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
-                else:
-                    normal_(std=std)(param.data)
-
-        with torch.no_grad():
-            for _, param in self.model.tok_embeddings.named_parameters():
-                normal_(std=std)(param)
-            for layer_idx, layer in enumerate(self.model.layers):
-                reset_attn_parameters(layer_idx, layer)
-            for _, param in self.output.named_parameters():
-                normal_(std=std)(param)
 
 # Copied from transformers.models.llama.modeling_llama.LlamaForSequenceClassification with Llama->InternLM2
 @add_start_docstrings(
