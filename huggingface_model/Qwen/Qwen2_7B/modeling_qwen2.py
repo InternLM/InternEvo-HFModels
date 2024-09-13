@@ -49,10 +49,9 @@ from transformers.utils import (
 )
 from .configuration_qwen2 import Qwen2Config
 
-from internlm.core.context import ParallelMode
-from internlm.core.context import global_context as gpc
-from internlm.model.ops.attention import isp_flash_attn_varlen_func, isp_flash_attn_func
-from internlm.initialize.initialize_tensor import normal_, scaled_init_method_normal
+
+if is_flash_attn_2_available():
+    from transformers.modeling_flash_attention_utils import _flash_attention_forward
 
 
 logger = logging.get_logger(__name__)
@@ -329,12 +328,6 @@ class Qwen2FlashAttention2(Qwen2Attention):
     ):
         bsz, q_len, _ = hidden_states.size()
 
-        use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
-        if use_packed_dataset:
-            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
-            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
-            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
-
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
@@ -421,28 +414,27 @@ class Qwen2FlashAttention2(Qwen2Attention):
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
 
-        if use_packed_dataset:
-            attn_output = isp_flash_attn_varlen_func(
-                query_states,
-                key_states,
-                value_states,
-                cu_seqlens,
-                cu_seqlens,
-                max_seqlen,
-                max_seqlen,
-                attention_dropout=dropout_rate,
-                softmax_scale=None,
-                causal=False,
-            )
+        if (
+            self.config.use_sliding_window
+            and getattr(self.config, "sliding_window", None) is not None
+            and self.layer_idx >= self.config.max_window_layers
+        ):
+            sliding_window = self.config.sliding_window
         else:
-            attn_output = isp_flash_attn_func(
-                query_states, 
-                key_states, 
-                value_states, 
-                attention_dropout=dropout_rate, 
-                softmax_scale=None, 
-                causal=False,
-            )
+            sliding_window = None
+
+        attn_output = _flash_attention_forward(
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            q_len,
+            position_ids=position_ids,
+            dropout=dropout_rate,
+            sliding_window=sliding_window,
+            is_causal=self.is_causal,
+            use_top_left_mask=self._flash_attn_uses_top_left_mask,
+        )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
         attn_output = self.o_proj(attn_output)
@@ -1147,30 +1139,6 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel):
         )
         return model_inputs
 
-    def reset_parameters(self, std=0.02):
-        def reset_attn_parameters(layer_idx, layer, use_scaled_init=True, std=0.02):
-            for name, param in layer.self_attn.named_parameters():
-                if param.ndim == 1:  # bias
-                    param.data.zero_()
-                elif "q_proj" in name or "k_proj" in name or "v_proj" in name:  # wq, wk, wv
-                    normal_(std=std)(param.data)
-                elif use_scaled_init:  # wo
-                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
-                else:  # wo
-                    normal_(std=std)(param.data)
-
-            for name, param in layer.mlp.named_parameters():
-                if use_scaled_init:
-                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
-                else:
-                    normal_(std=std)(param.data)
-        with torch.no_grad():
-            for _, param in self.model.embed_tokens.named_parameters():
-                normal_(std=std)(param)
-            for layer_idx, layer in enumerate(self.model.layers):
-                reset_attn_parameters(layer_idx, layer)
-            for _, param in self.lm_head.named_parameters():
-                normal_(std=std)(param)
 
 @add_start_docstrings(
     """
