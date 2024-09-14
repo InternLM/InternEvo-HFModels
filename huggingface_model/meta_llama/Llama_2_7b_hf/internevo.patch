@@ -53,7 +53,7 @@
 +                max_seqlen,
 +                attention_dropout=dropout_rate,
 +                softmax_scale=None,
-+                causal=False,
++                causal=True,
 +            )
 +        else:
 +            attn_output = isp_flash_attn_func(
@@ -62,7 +62,7 @@
 +                value_states, 
 +                attention_dropout=dropout_rate, 
 +                softmax_scale=None, 
-+                causal=False,
++                causal=True,
 +            )
  
          attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()

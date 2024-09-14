@@ -46,7 +46,7 @@
 +                    max_seqlen,
 +                    attention_dropout=0.0,
 +                    softmax_scale=None,
-+                    causal=False,
++                    causal=True,
 +                )
 +            else:
 +                attn_output = isp_flash_attn_func(
@@ -55,7 +55,7 @@
 +                    value_states, 
 +                    attention_dropout=0.0, 
 +                    softmax_scale=None, 
-+                    causal=False,
++                    causal=True,
 +                )
          else:
              attn_weights = torch.matmul(

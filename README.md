@@ -43,7 +43,7 @@ Take huggingface InternLM2 for example, you just need to make ~10 lines of code 
 +                max_seqlen,
 +                attention_dropout=dropout_rate,
 +                softmax_scale=None,
-+                causal=False,
++                causal=True,
 +            )
 +        else:
 +            attn_output = isp_flash_attn_func(
@@ -52,6 +52,6 @@ Take huggingface InternLM2 for example, you just need to make ~10 lines of code 
 +                value_states, 
 +                attention_dropout=dropout_rate, 
 +                softmax_scale=None, 
-+                causal=False,
++                causal=True,
 +            )
 ```

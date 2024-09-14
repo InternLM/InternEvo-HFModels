@@ -47,7 +47,7 @@
 +                max_seqlen,
 +                attention_dropout=0.0,
 +                softmax_scale=None,
-+                causal=False,
++                causal=True,
              )
          else:
 -            with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_math=True, enable_mem_efficient=True):
@@ -59,7 +59,7 @@
 +                value_states.transpose(1, 2), 
 +                attention_dropout=0.0, 
 +                softmax_scale=None, 
-+                causal=False,
++                causal=True,
 +            )
          attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
          attn_output = self.o_proj(attn_output)
