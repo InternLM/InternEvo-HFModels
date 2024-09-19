@@ -1,9 +1,9 @@
-model_type = "huggingface_Llava_1_5_7b_hf"
+model_type = "huggingface_Mixtral_8x7b_hf"
 
-JOB_NAME = f"train/llava_hf/llava_1_5_7b_hf"
+JOB_NAME = f"train/mistralai/Mixtral_8x7b_hf"
 DO_ALERT = False
 
-SEQ_LEN = 2048
+SEQ_LEN = 1024
 
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 SAVE_CKPT_FOLDER = "local:llm_ckpts"
@@ -20,10 +20,11 @@ ckpt = dict(
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),
 )
 
-TRAIN_FOLDER = None
+TRAIN_FOLDER = "roneneldan/TinyStories"
 VALID_FOLDER = None
 data = dict(
-    is_multimodal=True,
+    type="streaming",
+    tokenizer_path="mistralai/Mixtral-8x7B-v0.1",
     seq_len=SEQ_LEN,
     micro_num=4,
     micro_bsz=1,
@@ -40,8 +41,6 @@ data = dict(
     diag_outlier_ratio=1.1,
     use_packed_dataset=False,
     use_shm=False,
-    image_size=336,
-    patch_size=14,
 )
 
 grad_scaler = dict(
@@ -117,9 +116,9 @@ model = dict(
 
 parallel = dict(
     zero1=dict(size=-1),
-    tensor=dict(size=1, mode="mtp"),
+    tensor=dict(size=1, mode="isp"),
     pipeline=dict(size=1, interleaved_overlap=True),
-    weight=dict(size=1, overlap=False, memory_pool=True),
+    weight=dict(size=16, overlap=False, memory_pool=True),
 )
 
 cudnn_deterministic = False
