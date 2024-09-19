@@ -3,10 +3,10 @@ model_type = "huggingface_Llama_2_7b_hf"
 JOB_NAME = f"train/meta_llama/Llama_2_7b_hf"
 DO_ALERT = False
 
-SEQ_LEN = 2048
+SEQ_LEN = 1024
 
-MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
-SAVE_CKPT_FOLDER = "local:llm_ckpts"
+MODEL_ONLY_FOLDER = "/home/ubuntu/tangzhiyi/deploy/ckpt/Llama"
+SAVE_CKPT_FOLDER = "/home/ubuntu/tangzhiyi/deploy/ckpt/Llama"
 
 CHECKPOINT_EVERY = 50000
 ckpt = dict(
@@ -16,15 +16,15 @@ ckpt = dict(
     auto_resume=True,
     checkpoint_every=CHECKPOINT_EVERY,
     async_upload=True,
-    async_upload_tmp_folder="/dev/shm/internlm_tmp_ckpt/",
+    async_upload_tmp_folder="/home/ubuntu/tangzhiyi/deploy/ckpt/Llama",
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),
 )
 
-TRAIN_FOLDER = "roneneldan/TinyStories"
+TRAIN_FOLDER = "/home/ubuntu/tangzhiyi/hf-TinyStories"
 VALID_FOLDER = None
 data = dict(
     type="streaming",
-    tokenizer_path="meta-llama/Llama-2-7b-hf",
+    tokenizer_path="/home/ubuntu/tangzhiyi/models/llama2",
     seq_len=SEQ_LEN,
     micro_num=4,
     micro_bsz=1,

@@ -5,8 +5,8 @@ DO_ALERT = False
 
 SEQ_LEN = 2048
 
-MODEL_ONLY_FOLDER = "local:/home/pujiang/tangzhiyi/llm_ckpt/yi"
-SAVE_CKPT_FOLDER = "local:/home/pujiang/tangzhiyi/llm_ckpt/yi"
+MODEL_ONLY_FOLDER = "/home/ubuntu/tangzhiyi/deploy/ckpt/Yi"
+SAVE_CKPT_FOLDER = "/home/ubuntu/tangzhiyi/deploy/ckpt/Yi"
 
 CHECKPOINT_EVERY = 50000
 ckpt = dict(
@@ -16,15 +16,15 @@ ckpt = dict(
     auto_resume=True,
     checkpoint_every=CHECKPOINT_EVERY,
     async_upload=True,
-    async_upload_tmp_folder="/home/pujiang/tangzhiyi/llm_ckpt/yi",
+    async_upload_tmp_folder="/home/ubuntu/tangzhiyi/deploy/ckpt/Yi",
     oss_snapshot_freq=int(CHECKPOINT_EVERY / 2),
 )
 
-TRAIN_FOLDER = "/home/pujiang/tangzhiyi/hf-TinyStories"
+TRAIN_FOLDER = "/home/ubuntu/tangzhiyi/hf-TinyStories"
 VALID_FOLDER = None
 data = dict(
     type="streaming",
-    tokenizer_path="/data/models/Yi-6B/",
+    tokenizer_path="/home/ubuntu/tangzhiyi/models/Yi-6B/",
     seq_len=SEQ_LEN,
     micro_num=4,
     micro_bsz=1,
