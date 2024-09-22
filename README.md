@@ -2,18 +2,18 @@
 
 ## How to enable InternEvo pack and ISP training for huggingface models?
 
-### Option1: apply `internevo.patch`
+### Option1: apply the already prepared `internevo.patch`
 
-Take huggingface InternLM2 for example,
+Take huggingface_model InternLM2 for example,
 
 ```bash
 cd huggingface_model/internlm/internlm2_7b
 patch modeling_internlm2.py internevo.patch
 ```
 
-### Option2: manual modification
+### Option2: manual modification to modeling file
 
-Take huggingface InternLM2 for example, you just need to make ~10 lines of code changes to the attention calculation, to get `cu_seqlens` and `max_seqlen` from `gpc.config.data` and pass them to `isp_flash_attn_varlen_func` or `isp_flash_attn_func`.
+Take huggingface_model InternLM2 for example, you just need to make ~10 lines of code changes to the `attention` forward() calculation. All you need is to get `cu_seqlens` and `max_seqlen` from `gpc.config.data` and then pass them to `isp_flash_attn_varlen_func` or `isp_flash_attn_func`.
 
 ``` python
 +        use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
