@@ -18,6 +18,7 @@
  
 +        use_packed_dataset = gpc.config.data.get("use_packed_dataset", False)
 +        if use_packed_dataset:
++            assert bsz == 1, "hidden_states should be packed into bsz=1 when use_packed_dataset=True"
 +            cu_seqlens = gpc.config.data[f"cu_seqlens_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
 +            max_seqlen = gpc.config.data[f"max_seqlen_data_rank{gpc.get_local_rank(ParallelMode.DATA)}"]
 +
