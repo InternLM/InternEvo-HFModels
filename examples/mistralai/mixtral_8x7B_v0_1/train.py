@@ -9,7 +9,7 @@ from internlm.data import (
 )
 from internlm.initialize import initialize_distributed_env
 from internlm.monitor import internevo_monitor
-from internlm.utils.common import parse_args, get_current_device
+from internlm.utils.common import parse_args
 
 from huggingface_model.mistralai.mixtral_8x7B_v0_1.configuration_mixtral import (
     MixtralConfig,
@@ -27,7 +27,7 @@ def main(args):
             return_dict=False, 
             _attn_implementation="flash_attention_2",
         )
-    ).to(get_current_device())
+    )
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()

@@ -39,7 +39,7 @@ data = dict(
     valid_folder=VALID_FOLDER,
     empty_cache_and_diag_interval=200,
     diag_outlier_ratio=1.1,
-    use_packed_dataset=False,
+    use_packed_dataset=True,
     use_shm=False,
 )
 
@@ -109,7 +109,7 @@ model = dict(
         inject=True,
         interactive=False,
         modules=["embed", "linear", "norm"],
-        reset_params=False,
+        reset_params=True,
         data_helper=True,
     ),
 )
