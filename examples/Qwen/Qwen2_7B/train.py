@@ -23,7 +23,7 @@ def main(args):
             return_dict=False, 
             _attn_implementation="flash_attention_2",
         )
-    ).to(get_current_device())
+    )
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()

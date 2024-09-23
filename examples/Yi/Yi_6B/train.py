@@ -26,7 +26,7 @@ def main(args):
         YiConfig(
             return_dict=False, 
         )
-    ).to(get_current_device())
+    )
 
     # initialize train dataloader
     train_dl, dataset_types = build_train_loader_with_data_type()
