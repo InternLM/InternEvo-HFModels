@@ -1,5 +1,5 @@
 diff --git a/huggingface_model/mistralai/mixtral_8x7B_v0_1/modeling_mixtral.py b/huggingface_model/mistralai/mixtral_8x7B_v0_1/modeling_mixtral.py
-index abb37c3..848fa33 100644
+index abb37c3..0d567c9 100644
 --- a/huggingface_model/mistralai/mixtral_8x7B_v0_1/modeling_mixtral.py
 +++ b/huggingface_model/mistralai/mixtral_8x7B_v0_1/modeling_mixtral.py
 @@ -50,8 +50,11 @@ from transformers.utils import (
@@ -114,7 +114,7 @@ index abb37c3..848fa33 100644
          self.router_aux_loss_coef = config.router_aux_loss_coef
          self.num_experts = config.num_local_experts
          self.num_experts_per_tok = config.num_experts_per_tok
-@@ -1388,6 +1407,31 @@ class MixtralForCausalLM(MixtralPreTrainedModel):
+@@ -1388,6 +1407,39 @@ class MixtralForCausalLM(MixtralPreTrainedModel):
          )
          return model_inputs
  
@@ -130,11 +130,19 @@ index abb37c3..848fa33 100644
 +                else:  # wo
 +                    normal_(std=std)(param.data)
 +
-+            for name, param in layer.mlp.named_parameters():
++            for name, param in layer.block_sparse_moe.gate.named_parameters():
 +                if use_scaled_init:
 +                    scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
 +                else:
 +                    normal_(std=std)(param.data)
++
++            for expert in layer.block_sparse_moe.experts:
++                for name, param in expert.named_parameters():
++                    if use_scaled_init:
++                        scaled_init_method_normal(sigma=std, num_layers=layer_idx + 1)(param.data)
++                    else:
++                        normal_(std=std)(param.data)
++
 +        with torch.no_grad():
 +            for _, param in self.model.embed_tokens.named_parameters():
 +                normal_(std=std)(param)
