@@ -17,6 +17,7 @@ from internlm.core.context import (
     IS_WEIGHT_ZERO_PARALLEL,
     ParallelMode,
 )
+from internlm.utils.parallel import is_using_isp
 
 def set_parallel_attr(module, parallel_attr):
     for p in module.parameters():
@@ -72,9 +73,9 @@ class MLPEmbedder(nn.Module):
         self.silu = nn.SiLU()
         # self.out_layer = nn.Linear(hidden_dim, hidden_dim, bias=True)
         self.out_layer = new_linear("w1", in_features=hidden_dim, out_features=hidden_dim, bias=True, device=device, dtype=dtype)
-        
-        set_parallel_attr(self.in_layer, IS_WEIGHT_ZERO_PARALLEL)
-        set_parallel_attr(self.out_layer, IS_WEIGHT_ZERO_PARALLEL)
+        if is_using_isp():
+            set_parallel_attr(self.in_layer, IS_WEIGHT_ZERO_PARALLEL)
+            set_parallel_attr(self.out_layer, IS_WEIGHT_ZERO_PARALLEL)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.silu(self.in_layer(x)))
@@ -116,8 +117,9 @@ class SelfAttention(nn.Module):
         # self.proj = nn.Linear(dim, dim)
         self.proj = new_linear("w1", dim, dim, device=device, dtype=dtype)
         
-        set_parallel_attr(self.qkv, IS_WEIGHT_ZERO_PARALLEL)
-        set_parallel_attr(self.proj, IS_WEIGHT_ZERO_PARALLEL)
+        if is_using_isp():
+            set_parallel_attr(self.qkv, IS_WEIGHT_ZERO_PARALLEL)
+            set_parallel_attr(self.proj, IS_WEIGHT_ZERO_PARALLEL)
 
     def forward(self, x: Tensor, pe: Tensor) -> Tensor:
         qkv = self.qkv(x)
@@ -142,7 +144,8 @@ class Modulation(nn.Module):
         self.multiplier = 6 if double else 3
         # self.lin = nn.Linear(dim, self.multiplier * dim, bias=True)
         self.lin = new_linear("w1", in_features=dim, out_features=self.multiplier * dim, bias=True, device=device, dtype=dtype)
-        set_parallel_attr(self.lin, IS_WEIGHT_ZERO_PARALLEL)
+        if is_using_isp():
+            set_parallel_attr(self.lin, IS_WEIGHT_ZERO_PARALLEL)
 
     def forward(self, vec: Tensor) -> tuple[ModulationOut, ModulationOut | None]:
         out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(self.multiplier, dim=-1)
@@ -173,8 +176,9 @@ class DoubleStreamBlock(nn.Module):
             new_linear("w1", mlp_hidden_dim, hidden_size, bias=True, device=device, dtype=dtype)
         )
         
-        set_parallel_attr(self.img_mlp[0], IS_WEIGHT_ZERO_PARALLEL)
-        set_parallel_attr(self.img_mlp[2], IS_WEIGHT_ZERO_PARALLEL)
+        if is_using_isp():
+            set_parallel_attr(self.img_mlp[0], IS_WEIGHT_ZERO_PARALLEL)
+            set_parallel_attr(self.img_mlp[2], IS_WEIGHT_ZERO_PARALLEL)
 
         self.txt_mod = Modulation(hidden_size, double=True, device=device, dtype=dtype)
         self.txt_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -189,8 +193,9 @@ class DoubleStreamBlock(nn.Module):
             new_linear("w1", mlp_hidden_dim, hidden_size, bias=True, device=device, dtype=dtype),
         )
         
-        set_parallel_attr(self.txt_mlp[0], IS_WEIGHT_ZERO_PARALLEL)
-        set_parallel_attr(self.txt_mlp[2], IS_WEIGHT_ZERO_PARALLEL)
+        if is_using_isp():
+            set_parallel_attr(self.txt_mlp[0], IS_WEIGHT_ZERO_PARALLEL)
+            set_parallel_attr(self.txt_mlp[2], IS_WEIGHT_ZERO_PARALLEL)
 
     def forward(self, img: Tensor, txt: Tensor, vec: Tensor, pe: Tensor) -> tuple[Tensor, Tensor]:
         img_mod1, img_mod2 = self.img_mod(vec)
@@ -257,8 +262,9 @@ class SingleStreamBlock(nn.Module):
         # self.linear2 = nn.Linear(hidden_size + self.mlp_hidden_dim, hidden_size)
         self.linear2 = new_linear("w1", hidden_size + self.mlp_hidden_dim, hidden_size, device=device, dtype=dtype)
         
-        set_parallel_attr(self.linear1, IS_WEIGHT_ZERO_PARALLEL)
-        set_parallel_attr(self.linear2, IS_WEIGHT_ZERO_PARALLEL)
+        if is_using_isp():
+            set_parallel_attr(self.linear1, IS_WEIGHT_ZERO_PARALLEL)
+            set_parallel_attr(self.linear2, IS_WEIGHT_ZERO_PARALLEL)
 
         self.norm = QKNorm(head_dim)
 
@@ -291,8 +297,9 @@ class LastLayer(nn.Module):
         self.linear = new_linear("w1", hidden_size, patch_size * patch_size * out_channels, bias=True, device=device, dtype=dtype)
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), new_linear("w1", hidden_size, 2 * hidden_size, bias=True, device=device, dtype=dtype))
         
-        set_parallel_attr(self.linear, IS_WEIGHT_ZERO_PARALLEL)
-        set_parallel_attr(self.adaLN_modulation[1], IS_WEIGHT_ZERO_PARALLEL)
+        if is_using_isp():
+            set_parallel_attr(self.linear, IS_WEIGHT_ZERO_PARALLEL)
+            set_parallel_attr(self.adaLN_modulation[1], IS_WEIGHT_ZERO_PARALLEL)
 
     def forward(self, x: Tensor, vec: Tensor) -> Tensor:
         shift, scale = self.adaLN_modulation(vec).chunk(2, dim=1)

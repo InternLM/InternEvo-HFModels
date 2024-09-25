@@ -59,7 +59,7 @@ def main(args):
     device = get_current_device()
     
     dit, vae, t5, clip = get_models(name="flux-schnell", device=device, offload=False, is_schnell=is_schnell)
-    for p in dit.parameters():
+    for name, p in dit.named_parameters():
         if not hasattr(p, IS_WEIGHT_ZERO_PARALLEL):
             setattr(p, IS_REPLICA_ZERO_PARALLEL, True)
     isp_communicator = initialize_parallel_communicator(dit)

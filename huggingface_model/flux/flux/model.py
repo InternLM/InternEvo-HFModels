@@ -17,6 +17,7 @@ from internlm.core.context import (
     IS_WEIGHT_ZERO_PARALLEL,
     ParallelMode,
 )
+from internlm.utils.parallel import is_using_isp
 
 def set_parallel_attr(module, parallel_attr):
     for p in module.parameters():
@@ -62,7 +63,9 @@ class Flux(nn.Module):
         # self.img_in = nn.Linear(self.in_channels, self.hidden_size, bias=True)
         
         self.img_in = new_linear("w1", in_features=self.in_channels, out_features=self.hidden_size, bias=True, device=device, dtype=dtype)
-        set_parallel_attr(self.img_in, IS_WEIGHT_ZERO_PARALLEL)
+        
+        if is_using_isp():
+            set_parallel_attr(self.img_in, IS_WEIGHT_ZERO_PARALLEL)
         
         self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size, device=device, dtype=dtype)
         self.vector_in = MLPEmbedder(params.vec_in_dim, self.hidden_size, device=device, dtype=dtype)
@@ -71,7 +74,8 @@ class Flux(nn.Module):
         )
         # self.txt_in = nn.Linear(params.context_in_dim, self.hidden_size)
         self.txt_in = new_linear("w1", in_features=params.context_in_dim, out_features=self.hidden_size, device=device, dtype=dtype)
-        set_parallel_attr(self.txt_in, IS_WEIGHT_ZERO_PARALLEL)
+        if is_using_isp():
+            set_parallel_attr(self.txt_in, IS_WEIGHT_ZERO_PARALLEL)
 
         self.double_blocks = nn.ModuleList(
             [
