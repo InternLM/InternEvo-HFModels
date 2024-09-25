@@ -31,13 +31,7 @@ from torch.distributed.fsdp import (
 )
 
 from internlm.core.context import (
-    IS_REPLICA_EXPERT_DATA_PARALLEL,
     IS_REPLICA_ZERO_PARALLEL,
-    IS_TENSOR_EXPERT_DATA_PARALLEL,
-    IS_TENSOR_ZERO_PARALLEL,
-    IS_WEIGHT_EXPERT_DATA_PARALLEL,
-    IS_WEIGHT_ZERO_PARALLEL,
-    ParallelMode,
 )
 
 from internlm.train.pipeline import initialize_optimizer
@@ -118,6 +112,8 @@ def main(args):
                                    drop_last=True)
     
     num_steps = 10
+
+    train_dataloader = iter(train_dataloader)
 
     for step in range(0, num_steps):
         batch = next(train_dataloader)
