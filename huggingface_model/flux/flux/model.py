@@ -8,7 +8,20 @@ from .modules.layers import (DoubleStreamBlock, EmbedND, LastLayer,
                                  timestep_embedding)
 
 from internlm.model.modules.linear import new_linear
+from internlm.core.context import (
+    IS_REPLICA_EXPERT_DATA_PARALLEL,
+    IS_REPLICA_ZERO_PARALLEL,
+    IS_TENSOR_EXPERT_DATA_PARALLEL,
+    IS_TENSOR_ZERO_PARALLEL,
+    IS_WEIGHT_EXPERT_DATA_PARALLEL,
+    IS_WEIGHT_ZERO_PARALLEL,
+    ParallelMode,
+)
 
+def set_parallel_attr(module, parallel_attr):
+    for p in module.parameters():
+        setattr(p, parallel_attr, True)
+        
 @dataclass
 class FluxParams:
     in_channels: int
@@ -30,7 +43,7 @@ class Flux(nn.Module):
     Transformer model for flow matching on sequences.
     """
 
-    def __init__(self, params: FluxParams):
+    def __init__(self, params: FluxParams, device, dtype):
         super().__init__()
 
         self.params = params
@@ -46,13 +59,19 @@ class Flux(nn.Module):
         self.hidden_size = params.hidden_size
         self.num_heads = params.num_heads
         self.pe_embedder = EmbedND(dim=pe_dim, theta=params.theta, axes_dim=params.axes_dim)
-        self.img_in = nn.Linear(self.in_channels, self.hidden_size, bias=True)
-        self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)
-        self.vector_in = MLPEmbedder(params.vec_in_dim, self.hidden_size)
+        # self.img_in = nn.Linear(self.in_channels, self.hidden_size, bias=True)
+        
+        self.img_in = new_linear("w1", in_features=self.in_channels, out_features=self.hidden_size, bias=True, device=device, dtype=dtype)
+        set_parallel_attr(self.img_in, IS_WEIGHT_ZERO_PARALLEL)
+        
+        self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size, device=device, dtype=dtype)
+        self.vector_in = MLPEmbedder(params.vec_in_dim, self.hidden_size, device=device, dtype=dtype)
         self.guidance_in = (
-            MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size) if params.guidance_embed else nn.Identity()
+            MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size, device=device, dtype=dtype) if params.guidance_embed else nn.Identity()
         )
-        self.txt_in = nn.Linear(params.context_in_dim, self.hidden_size)
+        # self.txt_in = nn.Linear(params.context_in_dim, self.hidden_size)
+        self.txt_in = new_linear("w1", in_features=params.context_in_dim, out_features=self.hidden_size, device=device, dtype=dtype)
+        set_parallel_attr(self.txt_in, IS_WEIGHT_ZERO_PARALLEL)
 
         self.double_blocks = nn.ModuleList(
             [
@@ -61,6 +80,8 @@ class Flux(nn.Module):
                     self.num_heads,
                     mlp_ratio=params.mlp_ratio,
                     qkv_bias=params.qkv_bias,
+                    device=device,
+                    dtype=dtype,
                 )
                 for _ in range(params.depth)
             ]
@@ -68,12 +89,13 @@ class Flux(nn.Module):
 
         self.single_blocks = nn.ModuleList(
             [
-                SingleStreamBlock(self.hidden_size, self.num_heads, mlp_ratio=params.mlp_ratio)
+                SingleStreamBlock(self.hidden_size, self.num_heads, mlp_ratio=params.mlp_ratio, device=device, dtype=dtype)
                 for _ in range(params.depth_single_blocks)
             ]
         )
 
-        self.final_layer = LastLayer(self.hidden_size, 1, self.out_channels)
+        self.final_layer = LastLayer(self.hidden_size, 1, self.out_channels, device=device, dtype=dtype)
+        
 
     def forward(
         self,

@@ -125,7 +125,7 @@ def load_flow_model(name: str, device: str | torch.device = "cuda", hf_download:
     #     sd = load_sft(ckpt_path, device=str(device))
     #     missing, unexpected = model.load_state_dict(sd, strict=False, assign=True)
     #     print_load_warning(missing, unexpected)
-    model = Flux(configs[name].params).to(torch.bfloat16)
+    model = Flux(configs[name].params, device=device, dtype=torch.bfloat16).to(torch.bfloat16)
     return model
 
 

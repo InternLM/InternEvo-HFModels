@@ -32,9 +32,10 @@ from torch.distributed.fsdp import (
 
 from internlm.core.context import (
     IS_REPLICA_ZERO_PARALLEL,
+    IS_WEIGHT_ZERO_PARALLEL,
 )
 
-from internlm.train.pipeline import initialize_optimizer
+from internlm.train.pipeline import initialize_optimizer, initialize_parallel_communicator
 
 from dataset import DummyClsDataset
 
@@ -58,15 +59,16 @@ def main(args):
     device = get_current_device()
     
     dit, vae, t5, clip = get_models(name="flux-schnell", device=device, offload=False, is_schnell=is_schnell)
-
+    for p in dit.parameters():
+        if not hasattr(p, IS_WEIGHT_ZERO_PARALLEL):
+            setattr(p, IS_REPLICA_ZERO_PARALLEL, True)
+    isp_communicator = initialize_parallel_communicator(dit)
+    
     vae.requires_grad_(False)
     t5.requires_grad_(False)
     clip.requires_grad_(False)
     dit = dit.to(torch.bfloat16)
     dit.train()
-    
-    for p in dit.parameters():
-        setattr(p, IS_REPLICA_ZERO_PARALLEL, True)
     
     # optimizer_cls = torch.optim.AdamW
     
