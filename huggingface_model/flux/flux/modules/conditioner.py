@@ -1,7 +1,9 @@
 from torch import Tensor, nn
-from transformers import (CLIPTextModel, CLIPTokenizer, T5EncoderModel,
+from transformers import (CLIPTextModel, CLIPTokenizer, #T5EncoderModel,
                           T5Tokenizer)
 from transformers import AutoConfig, CLIPTextConfig
+
+from t5.modeling_t5 import T5EncoderModel
 
 class HFEmbedder(nn.Module):
     def __init__(self, version: str, max_length: int, **hf_kwargs):
@@ -19,8 +21,8 @@ class HFEmbedder(nn.Module):
         else:
             self.tokenizer: T5Tokenizer = T5Tokenizer.from_pretrained(version, max_length=max_length)
             config = AutoConfig.from_pretrained(version, trust_remote_code=True)
-            
-            self.hf_module: T5EncoderModel = T5EncoderModel._from_config(config)
+            self.hf_module = T5EncoderModel(config)
+            # self.hf_module: T5EncoderModel = T5EncoderModel._from_config(config)
 
         self.hf_module = self.hf_module.eval().requires_grad_(False)
 
