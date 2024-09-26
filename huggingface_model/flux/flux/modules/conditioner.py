@@ -12,7 +12,7 @@ class HFEmbedder(nn.Module):
         self.max_length = max_length
         self.output_key = "pooler_output" if self.is_clip else "last_hidden_state"
         
-        config = AutoConfig.from_pretrained(version, trust_remote_code=True)
+        # config = AutoConfig.from_pretrained(version, trust_remote_code=True)
 
         if self.is_clip:
             self.tokenizer: CLIPTokenizer = CLIPTokenizer.from_pretrained(version, max_length=max_length)
