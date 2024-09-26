@@ -6,13 +6,7 @@ import torch.nn.functional as F
 
 
 from internlm.core.context import global_context as gpc
-from internlm.core.trainer_builder import TrainerBuilder
-from internlm.data import (
-    build_train_loader_with_data_type,
-    build_valid_loader_with_data_type,
-)
 from internlm.initialize import initialize_distributed_env
-from internlm.monitor import internevo_monitor
 from internlm.utils.common import parse_args, get_current_device, enable_pytorch_expandable_segments
 
 from flux.util import (configs, load_ae, load_clip,
@@ -22,13 +16,6 @@ from dataset import loader
 from einops import rearrange
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
-import torch.utils.data as Data
-from internlm.solver.activation_checkpoint import activation_checkpoint
-
-from torch.distributed.fsdp import (
-   FullyShardedDataParallel,
-   CPUOffload,
-)
 
 from internlm.core.context import (
     IS_REPLICA_ZERO_PARALLEL,
@@ -36,6 +23,7 @@ from internlm.core.context import (
 )
 
 from internlm.train.pipeline import initialize_optimizer, initialize_parallel_communicator
+from internlm.core.context import global_context as gpc
 
 from dataset import DummyClsDataset
 
@@ -70,23 +58,7 @@ def main(args):
     dit = dit.to(torch.bfloat16)
     dit.train()
     
-    # optimizer_cls = torch.optim.AdamW
-    
-    # optimizer = optimizer_cls(
-    #     [p for p in dit.parameters() if p.requires_grad],
-    #     # lr=args.learning_rate,
-    #     lr=2e-5,
-    #     # betas=(args.adam_beta1, args.adam_beta2),
-    #     betas=(0.9, 0.999),
-    #     # weight_decay=args.adam_weight_decay,
-    #     weight_decay=0.01,
-    #     # eps=args.adam_epsilon,
-    #     eps=1e-8,
-    # )
-    
-    optimizer, beta2_scheduler, lr_scheduler = initialize_optimizer(dit)
-    
-    # train_dataloader = loader(**args.data_config)
+    optimizer, beta2_scheduler, lr_scheduler = initialize_optimizer(dit, isp_communicator)
 
     # lr_scheduler = get_scheduler(
     #     args.lr_scheduler,
@@ -95,31 +67,33 @@ def main(args):
     #     num_training_steps=args.max_train_steps * accelerator.num_processes,
     # )
     
-    train_dataset = DummyClsDataset([3, 256, 256])
+    # train_dataset = DummyClsDataset([3, 256, 256])
 
-    sampler = DistributedSampler(
-            train_dataset,
-            num_replicas=1, # important
-            rank=0, # important
-            shuffle=True,
-            seed=global_seed
-        )
+    # sampler = DistributedSampler(
+    #         train_dataset,
+    #         num_replicas=1, # important
+    #         rank=0, # important
+    #         shuffle=True,
+    #         seed=global_seed
+    #     )
 
-    train_dataloader = Data.DataLoader(dataset=train_dataset,
-                                   batch_size=1,
-                                   shuffle=False,
-                                   sampler=sampler,
-                                   num_workers=4,
-                                   pin_memory=True,
-                                   drop_last=True)
+    # train_dataloader = Data.DataLoader(dataset=train_dataset,
+    #                                batch_size=1,
+    #                                shuffle=False,
+    #                                sampler=sampler,
+    #                                num_workers=4,
+    #                                pin_memory=True,
+    #                                drop_last=True)
+    
+    train_dataloader = loader(train_batch_size=1, num_workers=4, img_dir="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/data")
+    train_dataloader = iter(train_dataloader)
     
     num_steps = 10
 
-    train_dataloader = iter(train_dataloader)
-
     for step in range(0, num_steps):
         batch = next(train_dataloader)
-        img, prompts = batch["model_input"], batch["video_prompts"]
+        # img, prompts = batch["model_input"], batch["video_prompts"]
+        img, prompts = batch[0].to(torch.float32), batch[1]
 
         with torch.no_grad():
             x_1 = vae.encode(img.to(device))
@@ -133,6 +107,13 @@ def main(args):
         x_t = (1 - t) * x_1 + t * x_0
         bsz = x_1.shape[0]
         guidance_vec = torch.full((x_t.shape[0],), 4, device=x_t.device, dtype=x_t.dtype)
+        # torch.save(x_t.cpu(), "x_t.pt")
+        # torch.save(inp['img_ids'].cpu(), "img_ids.pt")
+        # torch.save(inp['txt'].cpu(), "txt.pt")
+        # torch.save(inp['txt_ids'].cpu(), "txt_ids.pt")
+        # torch.save(inp['vec'].cpu(), "vec.pt")
+        # torch.save(t.cpu(), "t.pt")
+        # torch.save(guidance_vec.cpu(), "guidance_vec.pt")
 
         # Predict the noise residual and compute loss
         model_pred = dit(img=x_t.to(weight_dtype),
@@ -143,8 +124,6 @@ def main(args):
                         timesteps=t.to(weight_dtype),
                         guidance=guidance_vec.to(weight_dtype),)
         loss = F.mse_loss(model_pred.float(), (x_0 - x_1).float(), reduction="mean")
-        if gpc.get_global_rank() == 0:
-            print(f"step = {step}, loss = {loss}", flush=True)
 
         # Gather the losses across all processes for logging (if we use distributed training).
         # avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
@@ -155,6 +134,9 @@ def main(args):
         optimizer.step()
         # lr_scheduler.step()
         optimizer.zero_grad()
+        
+        if gpc.get_global_rank() == 0:
+            print(f"step = {step}, loss = {loss}", flush=True)
 
 
 

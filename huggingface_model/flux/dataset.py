@@ -7,6 +7,9 @@ from torch.utils.data import Dataset, DataLoader
 import json
 import random
 
+from internlm.core.context import global_context as gpc
+from internlm.core.context import ParallelMode
+
 def image_resize(img, max_size=512):
     w, h = img.size
     if w >= h:
@@ -58,6 +61,14 @@ class CustomImageDataset(Dataset):
         self.img_size = img_size
         self.caption_type = caption_type
         self.random_ratio = random_ratio
+
+        dp_rank = gpc.get_local_rank(ParallelMode.DATA)
+        dp_world_size = gpc.get_world_size(ParallelMode.DATA)
+        
+        local_image_len = len(self.images) // dp_world_size
+        
+        self.images = self.images[dp_rank * local_image_len : (dp_rank + 1) * local_image_len]
+        
 
     def __len__(self):
         return len(self.images)
