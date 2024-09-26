@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import torch
 from einops import rearrange
 from torch import Tensor, nn
+from torch.nn import init
 
 from ..math import attention, rope
 
@@ -18,6 +19,8 @@ from internlm.core.context import (
     ParallelMode,
 )
 from internlm.utils.parallel import is_using_isp
+
+from internlm.initialize.initialize_tensor import normal_
 
 def set_parallel_attr(module, parallel_attr):
     for p in module.parameters():
@@ -76,6 +79,17 @@ class MLPEmbedder(nn.Module):
         if is_using_isp():
             set_parallel_attr(self.in_layer, IS_WEIGHT_ZERO_PARALLEL)
             set_parallel_attr(self.out_layer, IS_WEIGHT_ZERO_PARALLEL)
+        self.init_func = normal_
+        
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        with torch.no_grad():
+            for name, param in self.in_layer.named_parameters():
+                self.init_func(std=0.02)(param.data)
+            for name, param in self.out_layer.named_parameters():
+                self.init_func(std=0.02)(param.data)
+            
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.silu(self.in_layer(x)))
@@ -85,7 +99,12 @@ class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int):
         super().__init__()
         self.scale = nn.Parameter(torch.ones(dim))
+        
+        self.reset_parameters()
 
+    def reset_parameters(self):
+        init.ones_(self.scale)
+        
     def forward(self, x: Tensor):
         x_dtype = x.dtype
         x = x.float()
@@ -121,6 +140,17 @@ class SelfAttention(nn.Module):
             set_parallel_attr(self.qkv, IS_WEIGHT_ZERO_PARALLEL)
             set_parallel_attr(self.proj, IS_WEIGHT_ZERO_PARALLEL)
 
+        self.init_func = normal_
+        
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        with torch.no_grad():
+            for name, param in self.qkv.named_parameters():
+                self.init_func(std=0.02)(param.data)
+            for name, param in self.proj.named_parameters():
+                self.init_func(std=0.02)(param.data)
+
     def forward(self, x: Tensor, pe: Tensor) -> Tensor:
         qkv = self.qkv(x)
         q, k, v = rearrange(qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads)
@@ -146,6 +176,15 @@ class Modulation(nn.Module):
         self.lin = new_linear("w1", in_features=dim, out_features=self.multiplier * dim, bias=True, device=device, dtype=dtype)
         if is_using_isp():
             set_parallel_attr(self.lin, IS_WEIGHT_ZERO_PARALLEL)
+        
+        self.init_func = normal_
+        
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        with torch.no_grad():
+            for name, param in self.lin.named_parameters():
+                self.init_func(std=0.02)(param.data)
 
     def forward(self, vec: Tensor) -> tuple[ModulationOut, ModulationOut | None]:
         out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(self.multiplier, dim=-1)
@@ -196,6 +235,17 @@ class DoubleStreamBlock(nn.Module):
         if is_using_isp():
             set_parallel_attr(self.txt_mlp[0], IS_WEIGHT_ZERO_PARALLEL)
             set_parallel_attr(self.txt_mlp[2], IS_WEIGHT_ZERO_PARALLEL)
+
+        self.init_func = normal_
+        
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        with torch.no_grad():
+            for name, param in self.txt_mlp[0].named_parameters():
+                self.init_func(std=0.02)(param.data)
+            for name, param in self.txt_mlp[2].named_parameters():
+                self.init_func(std=0.02)(param.data)
 
     def forward(self, img: Tensor, txt: Tensor, vec: Tensor, pe: Tensor) -> tuple[Tensor, Tensor]:
         img_mod1, img_mod2 = self.img_mod(vec)
@@ -274,6 +324,17 @@ class SingleStreamBlock(nn.Module):
         self.mlp_act = nn.GELU(approximate="tanh")
         self.modulation = Modulation(hidden_size, double=False, device=device, dtype=dtype)
 
+        self.init_func = normal_
+        
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        with torch.no_grad():
+            for name, param in self.linear1.named_parameters():
+                self.init_func(std=0.02)(param.data)
+            for name, param in self.linear2.named_parameters():
+                self.init_func(std=0.02)(param.data)
+
     def forward(self, x: Tensor, vec: Tensor, pe: Tensor) -> Tensor:
         mod, _ = self.modulation(vec)
         x_mod = (1 + mod.scale) * self.pre_norm(x) + mod.shift
@@ -300,6 +361,17 @@ class LastLayer(nn.Module):
         if is_using_isp():
             set_parallel_attr(self.linear, IS_WEIGHT_ZERO_PARALLEL)
             set_parallel_attr(self.adaLN_modulation[1], IS_WEIGHT_ZERO_PARALLEL)
+        
+        self.init_func = normal_
+        
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        with torch.no_grad():
+            for name, param in self.linear.named_parameters():
+                self.init_func(std=0.02)(param.data)
+            for name, param in self.adaLN_modulation[1].named_parameters():
+                self.init_func(std=0.02)(param.data)
 
     def forward(self, x: Tensor, vec: Tensor) -> Tensor:
         shift, scale = self.adaLN_modulation(vec).chunk(2, dim=1)

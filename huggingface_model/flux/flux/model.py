@@ -19,6 +19,8 @@ from internlm.core.context import (
 )
 from internlm.utils.parallel import is_using_isp
 
+from internlm.initialize.initialize_tensor import normal_
+
 def set_parallel_attr(module, parallel_attr):
     for p in module.parameters():
         setattr(p, parallel_attr, True)
@@ -99,7 +101,16 @@ class Flux(nn.Module):
         )
 
         self.final_layer = LastLayer(self.hidden_size, 1, self.out_channels, device=device, dtype=dtype)
-        
+
+        self.init_func = normal_
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        with torch.no_grad():
+            for name, param in self.img_in.named_parameters():
+                if param.ndim == 1:
+                    param.data.zero_()
+                self.init_func(std=0.02)(param.data)
 
     def forward(
         self,
