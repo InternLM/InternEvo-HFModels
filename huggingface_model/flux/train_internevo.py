@@ -3,7 +3,7 @@
 import os
 import torch
 import torch.nn.functional as F
-
+import torch.utils.data as Data
 
 from internlm.core.context import global_context as gpc
 from internlm.initialize import initialize_distributed_env
@@ -85,7 +85,7 @@ def main(args):
     #                                pin_memory=True,
     #                                drop_last=True)
     
-    train_dataloader = loader(train_batch_size=1, num_workers=4, img_dir="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/data")
+    train_dataloader = loader(train_batch_size=1, num_workers=4, img_dir="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/data", img_size=256)
     train_dataloader = iter(train_dataloader)
     
     num_steps = 10
