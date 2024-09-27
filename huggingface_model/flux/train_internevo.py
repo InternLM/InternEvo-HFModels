@@ -86,12 +86,16 @@ def main(args):
     #                                drop_last=True)
     
     train_dataloader = loader(train_batch_size=1, num_workers=4, img_dir="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/data", img_size=256)
-    train_dataloader = iter(train_dataloader)
+    train_iter = iter(train_dataloader)
     
     num_steps = 10
 
     for step in range(0, num_steps):
-        batch = next(train_dataloader)
+        try:
+            batch = next(train_iter)
+        except StopIteration:
+            train_iter = iter(train_dataloader)
+            batch = next(train_iter)
         # img, prompts = batch["model_input"], batch["video_prompts"]
         img, prompts = batch[0].to(torch.float32), batch[1]
 
