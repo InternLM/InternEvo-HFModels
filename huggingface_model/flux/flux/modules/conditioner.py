@@ -6,23 +6,25 @@ from transformers import AutoConfig, CLIPTextConfig
 from t5.modeling_t5 import T5EncoderModel
 
 class HFEmbedder(nn.Module):
-    def __init__(self, version: str, max_length: int, **hf_kwargs):
+    def __init__(self, tokenizer_path: str, model_path: str, max_length: int, is_clip: bool, **hf_kwargs):
         super().__init__()
-        self.is_clip = version.startswith("openai")
+        self.is_clip = is_clip
         self.max_length = max_length
         self.output_key = "pooler_output" if self.is_clip else "last_hidden_state"
-        
-        # config = AutoConfig.from_pretrained(version, trust_remote_code=True)
 
         if self.is_clip:
-            self.tokenizer: CLIPTokenizer = CLIPTokenizer.from_pretrained(version, max_length=max_length)
-            config = CLIPTextConfig.from_pretrained(version)
-            self.hf_module = CLIPTextModel(config)
-        else:
-            self.tokenizer: T5Tokenizer = T5Tokenizer.from_pretrained(version, max_length=max_length)
-            config = AutoConfig.from_pretrained(version, trust_remote_code=True)
-            self.hf_module = T5EncoderModel(config)
-            # self.hf_module: T5EncoderModel = T5EncoderModel._from_config(config)
+            self.tokenizer: CLIPTokenizer = CLIPTokenizer.from_pretrained(tokenizer_path, max_length=max_length)
+            # config = CLIPTextConfig.from_pretrained(version)
+            # self.hf_module = CLIPTextModel(config)
+            # version = "/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder"
+            self.hf_module = CLIPTextModel.from_pretrained(model_path)
+        else:                
+            # version = "/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/tokenizer_2"
+            self.tokenizer: T5Tokenizer = T5Tokenizer.from_pretrained(tokenizer_path, max_length=max_length)
+            # config = AutoConfig.from_pretrained(version, trust_remote_code=True)
+            # self.hf_module = T5EncoderModel(config)
+            # version = "/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder_2"
+            self.hf_module: T5EncoderModel = T5EncoderModel.from_pretrained(model_path)
 
         self.hf_module = self.hf_module.eval().requires_grad_(False)
 

@@ -5,12 +5,14 @@ import torch
 from einops import rearrange
 from huggingface_hub import hf_hub_download
 from imwatermark import WatermarkEncoder
-from safetensors.torch import load_file as load_sft
+from safetensors.torch import load_file
 
 from .model import Flux, FluxParams
 from .modules.autoencoder import AutoEncoder, AutoEncoderParams
 # from flux.modules.conditioner import HFEmbedder
 from .modules.conditioner import HFEmbedder
+
+from internlm.core.context import global_context as gpc
 
 
 @dataclass
@@ -104,17 +106,11 @@ def print_load_warning(missing: list[str], unexpected: list[str]) -> None:
 
 
 def load_flow_model(name: str, device: str | torch.device = "cuda", hf_download: bool = True):
-    print(f"loading flux", flush=True)
+    if gpc.get_global_rank() == 0:
+        print(f"loading flux", flush=True)
     # Loading Flux
     # print("Init model")
     # ckpt_path = configs[name].ckpt_path
-    # if (
-    #     ckpt_path is None
-    #     and configs[name].repo_id is not None
-    #     and configs[name].repo_flow is not None
-    #     and hf_download
-    # ):
-    #     ckpt_path = hf_hub_download(configs[name].repo_id, configs[name].repo_flow)
 
     # with torch.device("meta" if ckpt_path is not None else device):
     #     model = Flux(configs[name].params).to(torch.bfloat16)
@@ -125,42 +121,44 @@ def load_flow_model(name: str, device: str | torch.device = "cuda", hf_download:
     #     sd = load_sft(ckpt_path, device=str(device))
     #     missing, unexpected = model.load_state_dict(sd, strict=False, assign=True)
     #     print_load_warning(missing, unexpected)
-    model = Flux(configs[name].params, device=device, dtype=torch.bfloat16).to(torch.bfloat16)
+    model = Flux(configs[name].params, device=device, dtype=torch.bfloat16)
     return model
 
 
-def load_t5(device: str | torch.device = "cuda", max_length: int = 512) -> HFEmbedder:
+def load_t5(tokenizer_path: str, model_path: str, device: str | torch.device = "cuda", max_length: int = 512) -> HFEmbedder:
     # max length 64, 128, 256 and 512 should work (if your sequence is short enough)
-    print(f"loading t5", flush=True)
-    return HFEmbedder("google/t5-v1_1-xxl", max_length=max_length, torch_dtype=torch.bfloat16).to(device)
+    if gpc.get_global_rank() == 0:
+        print(f"loading t5", flush=True)
+    return HFEmbedder(tokenizer_path=tokenizer_path, 
+                      model_path=model_path,
+                      max_length=max_length,
+                      is_clip=False).to(device)
+    # return HFEmbedder("/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder_2", max_length=max_length, torch_dtype=torch.bfloat16).to(device)
 
 
-def load_clip(device: str | torch.device = "cuda") -> HFEmbedder:
-    print(f"loading clip", flush=True)
-    return HFEmbedder("openai/clip-vit-large-patch14", max_length=77, torch_dtype=torch.bfloat16).to(device)
+
+def load_clip(tokenizer_path: str, model_path: str, device: str | torch.device = "cuda") -> HFEmbedder:
+    if gpc.get_global_rank() == 0:
+        print(f"loading clip", flush=True)
+    return HFEmbedder(tokenizer_path=tokenizer_path, 
+                      model_path=model_path,
+                      max_length=77,
+                      is_clip=True).to(device)
+    # return HFEmbedder("openai/clip-vit-large-patch14", max_length=77, torch_dtype=torch.bfloat16).to(device)
 
 
-def load_ae(name: str, device: str | torch.device = "cuda", hf_download: bool = True) -> AutoEncoder:
-    print(f"loading vae", flush=True)
-    # ckpt_path = configs[name].ae_path
-    # if (
-    #     ckpt_path is None
-    #     and configs[name].repo_id is not None
-    #     and configs[name].repo_ae is not None
-    #     and hf_download
-    # ):
-    #     ckpt_path = hf_hub_download(configs[name].repo_id, configs[name].repo_ae)
-
-    # # Loading the autoencoder
-    # print("Init AE")
-    # with torch.device("meta" if ckpt_path is not None else device):
-    #     ae = AutoEncoder(configs[name].ae_params)
-
-    # if ckpt_path is not None:
-    #     sd = load_sft(ckpt_path, device=str(device))
-    #     missing, unexpected = ae.load_state_dict(sd, strict=False, assign=True)
-    #     print_load_warning(missing, unexpected)
+def load_ae(name: str, device: str | torch.device = "cuda", ckpt_path: str = None, hf_download: bool = True) -> AutoEncoder:
+    if gpc.get_global_rank() == 0:
+        print(f"loading vae", flush=True)
+    
+    # with torch.device(device):
     ae = AutoEncoder(configs[name].ae_params)
+    
+    if ckpt_path is not None:
+        sd = load_file(ckpt_path, device='cpu')
+        missing, unexpected = ae.load_state_dict(sd, strict=False, assign=True)
+        print_load_warning(missing, unexpected)
+
     return ae
 
 

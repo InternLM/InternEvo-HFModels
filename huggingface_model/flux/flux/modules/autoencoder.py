@@ -158,6 +158,7 @@ class Encoder(nn.Module):
         self.conv_out = nn.Conv2d(block_in, 2 * z_channels, kernel_size=3, stride=1, padding=1)
 
     def forward(self, x: Tensor) -> Tensor:
+        x = x.to(self.conv_in.weight.dtype)
         # downsampling
         hs = [self.conv_in(x)]
         for i_level in range(self.num_resolutions):

@@ -166,6 +166,29 @@ model = dict(
     qk_interleaved=False,
     num_chunks=1,  # if num_chunks > 1, interleaved pipeline scheduler is used.
 )
+
+
+flux = dict(
+    data=dict(
+        train_folder="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/data",
+        img_size=256,
+        t5_max_length=256,
+        clip_max_length=77,
+        batch_size=1,
+        num_workers=4,
+        total_steps=500, 
+    ),
+    model=dict(
+        model_name="flux-schnell",
+        weight_dtype="bfloat16",
+        t5_tokenizer="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/tokenizer_2",
+        t5_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder_2",
+        clip_tokenizer="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/tokenizer",
+        clip_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder",
+        vae_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/vae/diffusion_pytorch_model.safetensors",
+    )
+)
+
 """
 zero1 parallel (dict):
     1. size: int
@@ -195,7 +218,7 @@ parallel = dict(
     zero1=dict(size=-1),
     tensor=dict(size=1, mode="isp"),
     pipeline=dict(size=1, interleaved_overlap=True, zero_bubble=False),
-    weight=dict(size=2, overlap=False),
+    weight=dict(size=4, overlap=False),
 )
 
 cudnn_deterministic = False
