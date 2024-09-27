@@ -68,6 +68,7 @@ class ResnetBlock(nn.Module):
 
     def forward(self, x):
         h = x
+        h = h.to(self.norm1.weight.dtype)
         h = self.norm1(h)
         h = swish(h)
         h = self.conv1(h)
@@ -176,6 +177,7 @@ class Encoder(nn.Module):
         # end
         h = self.norm_out(h)
         h = swish(h)
+        h = h.to(self.conv_out.weight.dtype)
         h = self.conv_out(h)
         return h
 

@@ -97,7 +97,7 @@ def main(args):
             train_iter = iter(train_dataloader)
             batch = next(train_iter)
         # img, prompts = batch["model_input"], batch["video_prompts"]
-        img, prompts = batch[0].to(torch.float32), batch[1]
+        img, prompts = batch[0].to(torch.bfloat16), batch[1]
 
         with torch.no_grad():
             x_1 = vae.encode(img.to(device))
