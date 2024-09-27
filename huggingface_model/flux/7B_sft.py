@@ -89,11 +89,11 @@ grad_scaler = dict(
         growth_interval=1000,
     ),
     # the multiplication factor for increasing loss scale, defaults to 2
-    growth_factor=2,
+    growth_factor=1.0,
     # the multiplication factor for decreasing loss scale, defaults to 0.5
-    backoff_factor=0.5,
+    backoff_factor=1.0,
     # the maximum loss scale, defaults to None
-    max_scale=2**24,
+    max_scale=1.0,
     # the number of overflows before decreasing loss scale, defaults to 2
     hysteresis=2,
 )
@@ -118,9 +118,9 @@ loss = dict(
 )
 
 adam = dict(
-    lr=1e-4,
+    lr=2e-5,
     adam_beta1=0.9,
-    adam_beta2=0.95,
+    adam_beta2=0.999,
     adam_beta2_c=0,
     adam_eps=1e-8,
     weight_decay=0.01,
@@ -185,7 +185,8 @@ flux = dict(
         t5_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder_2",
         clip_tokenizer="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/tokenizer",
         clip_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder",
-        vae_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/vae/diffusion_pytorch_model.safetensors",
+        # vae_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/vae/diffusion_pytorch_model.safetensors",
+        vae_ckpt=None,
     )
 )
 
@@ -216,9 +217,9 @@ weight parallel (dict):
 """
 parallel = dict(
     zero1=dict(size=-1),
-    tensor=dict(size=1, mode="isp"),
+    tensor=dict(size=1, mode="mtp"),
     pipeline=dict(size=1, interleaved_overlap=True, zero_bubble=False),
-    weight=dict(size=4, overlap=False),
+    weight=dict(size=1, overlap=False),
 )
 
 cudnn_deterministic = False
