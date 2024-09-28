@@ -11,7 +11,7 @@ VOCAB_SIZE = 103168
 MODEL_ONLY_FOLDER = "local:llm_ckpts/xxxx"
 # Ckpt folder format:
 # fs: 'local:/mnt/nfs/XXX'
-SAVE_CKPT_FOLDER = "local:llm_ckpts"
+SAVE_CKPT_FOLDER = "local:/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/model_ckpt"
 LOAD_CKPT_FOLDER = "local:llm_ckpts/49"
 
 # boto3 Ckpt folder format:
@@ -19,9 +19,9 @@ LOAD_CKPT_FOLDER = "local:llm_ckpts/49"
 # BOTO3_IP = os.environ["BOTO3_IP"] # boto3 bucket endpoint
 # SAVE_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm"
 # LOAD_CKPT_FOLDER = f"boto3:s3://model_weights.{BOTO3_IP}/internlm/snapshot/1/"
-CHECKPOINT_EVERY = 50
+CHECKPOINT_EVERY = 2
 ckpt = dict(
-    enable_save_ckpt=False,  # enable ckpt save.
+    enable_save_ckpt=True,  # enable ckpt save.
     enable_internevo2hf_ckpt=False,  # enable ckpt save for huggingface format.
     save_ckpt_folder=SAVE_CKPT_FOLDER,  # Path to save training ckpt.
     # load_ckpt_folder= dict(path=MODEL_ONLY_FOLDER, content=["model"], ckpt_type="normal"),
@@ -39,7 +39,7 @@ ckpt = dict(
     # path specified in `load_ckpt_info` by default.
     # If you want to initialize your model weights from another model, you must set `auto_resume` to False.
     # If you want to train from scratch, please set `auto_resume` to False and 'load_ckpt_info' to None.
-    auto_resume=True,
+    auto_resume=False,
     checkpoint_every=CHECKPOINT_EVERY,
     async_upload=True,  # async ckpt upload. (only work for boto3 ckpt)
     async_upload_tmp_folder="/dev/shm/internlm_tmp_ckpt/",  # path for temporarily files during asynchronous upload.
@@ -176,7 +176,7 @@ flux = dict(
         clip_max_length=77,
         batch_size=1,
         num_workers=4,
-        total_steps=500, 
+        total_steps=5, 
     ),
     model=dict(
         model_name="flux-schnell",
@@ -185,8 +185,8 @@ flux = dict(
         t5_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder_2",
         clip_tokenizer="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/tokenizer",
         clip_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/text_encoder",
-        # vae_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/vae/diffusion_pytorch_model.safetensors",
-        vae_ckpt=None,
+        vae_ckpt="/mnt/petrelfs/xiongyingtong/InternEvo-HFModels/huggingface_model/flux/flux_weight/vae/diffusion_pytorch_model.safetensors",
+        # vae_ckpt=None,
     )
 )
 
@@ -217,9 +217,9 @@ weight parallel (dict):
 """
 parallel = dict(
     zero1=dict(size=-1),
-    tensor=dict(size=1, mode="mtp"),
+    tensor=dict(size=1, mode="isp"),
     pipeline=dict(size=1, interleaved_overlap=True, zero_bubble=False),
-    weight=dict(size=1, overlap=False),
+    weight=dict(size=4, overlap=False),
 )
 
 cudnn_deterministic = False

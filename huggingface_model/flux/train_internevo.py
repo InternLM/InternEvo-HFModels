@@ -28,6 +28,8 @@ from internlm.utils.logger import get_logger
 from datetime import datetime
 
 from dataset import DummyClsDataset
+from internlm.checkpoint.checkpoint_manager import CheckpointManager
+from internlm.data.train_state import get_train_state
 
 logger = get_logger(__file__)
 
@@ -106,9 +108,27 @@ def main(args):
     
     train_dataloader = loader(train_batch_size=data_cfg.batch_size, num_workers=data_cfg.num_workers, img_dir=data_cfg.train_folder, img_size=data_cfg.img_size)
     train_iter = iter(train_dataloader)
+    
+    with open(args.config, "r") as f:
+        config_lines = f.readlines()
+
+    # initialize the checkpoint manager
+    ckpt_manager = CheckpointManager(
+                    ckpt_config=gpc.config.ckpt,
+                    model=dit,
+                    optimizer=optimizer,
+                    lr_scheduler=lr_scheduler,
+                    train_dl=train_dataloader,
+                    model_config=gpc.config.model,
+                    model_config_file="".join(config_lines),
+                    feishu_address=gpc.config.monitor.alert.feishu_alert_address,
+                )
+
+    train_state = get_train_state(train_dataloader)
 
 
     for step in range(0, data_cfg.total_steps):
+        gpc.step = step
         try:
             batch = next(train_iter)
         except StopIteration:
@@ -142,11 +162,14 @@ def main(args):
         # Backpropagate
         loss.backward()
         optimizer.step()
-        # lr_scheduler.step()
+        lr_scheduler.step()
         optimizer.zero_grad()
         
         if gpc.is_rank_for_log():
             logger.info(f"{datetime.now()}: step = {step}, loss = {loss}")
+    
+        if ckpt_manager.try_save_checkpoint(train_state):
+            ckpt_manager.wait_async_upload_finish()
 
 
 
