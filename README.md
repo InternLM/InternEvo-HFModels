@@ -8,7 +8,7 @@ Democratizing Huggingface model training with InternEvo framework.
 
 ## Modelzoo
 
-| Model     | Supported (Y/N)     | Variable-length Training (Y/N) | Intern-Sequence Parallel (Y/N) |
+| Model     | Supported (Y/N)     | Variable-length Training (Y/N) | Intern Sequence Parallel (Y/N) |
 |-----------|:-------------------:|-------------------------------:|-------------------------------:|
 | Baichuan2 | Y                   | Y                              | Y                              |
 | Flux      | Y                   | N                              | N                              |
