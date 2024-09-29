@@ -1,3 +1,27 @@
+# Introduction
+
+Democratizing Huggingface model training with InternEvo framework.
+
+![InternEvo_and_Huggingface](doc/images/InternEvo_and_Huggingface.png)
+
+# Support Matrix
+
+## Modelzoo
+
+| Model     | Supported (Y/N)     | Variable-length Training (Y/N) | Intern-Sequence Parallel (Y/N) |
+|-----------|:-------------------:|-------------------------------:|-------------------------------:|
+| Baichuan2 | Y                   | Y                              | Y                              |
+| Flux      | Y                   | N                              | N                              |
+| InternLM1 | Y                   | Y                              | Y                              |
+| InternLM2 | Y                   | Y                              | Y                              |
+| LLaVA1.5  | Y                   | N                              | N                              |
+| Mamba     | Y                   | N                              | N                              |
+| Llama2    | Y                   | Y                              | Y                              |
+| Mixtral   | Y                   | Y                              | Y                              |
+| Qwen2     | Y                   | Y                              | Y                              |
+| Yi        | Y                   | Y                              | Y                              |
+
+
 # Usage
 
 ## How to enable InternEvo pack and ISP training for huggingface models?
