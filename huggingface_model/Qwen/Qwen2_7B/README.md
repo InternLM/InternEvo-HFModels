@@ -12,7 +12,7 @@ d6ffe74dfa577b5e7d12e48aa1c686ad8d3ef557
 
 # Usage
 
-## How to apply InternEvo patch to support pack and ISP training?
+## How to apply InternEvo patch to support Variable-Length and Intern Sequence Parallel training?
 ```bash
 patch modeling_qwen2.py internevo.patch
 ```

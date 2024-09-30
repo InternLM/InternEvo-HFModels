@@ -11,7 +11,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/mi
 
 # Usage
 
-## How to apply InternEvo patch to support pack and ISP training?
+## How to apply InternEvo patch to support Variable-Length and Intern Sequence Parallel training?
 ```bash
 patch modeling_mixtral.py internevo.patch
 ```

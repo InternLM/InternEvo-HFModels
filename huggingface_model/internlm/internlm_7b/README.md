@@ -12,7 +12,7 @@ https://huggingface.co/internlm/internlm-7b/blob/main/configuration_internlm.py
 
 # Usage
 
-## How to apply InternEvo patch to support pack and ISP training?
+## How to apply InternEvo patch to support Variable-Length and Intern Sequence Parallel training?
 ```bash
 patch modeling_internlm.py internevo.patch
 ```

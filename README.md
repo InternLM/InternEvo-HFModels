@@ -1,6 +1,6 @@
 # Introduction :muscle:
 
-Democratizing Huggingface model training with InternEvo framework, via the capability of Variable-Length Training and Intern Sequence Parallelism.
+Democratizing Huggingface model training with InternEvo framework, via the capability of Variable-Length and Intern Sequence Parallel training.
 
 ![InternEvo_and_Huggingface](doc/images/InternEvo_and_Huggingface.png)
 
@@ -25,7 +25,7 @@ Democratizing Huggingface model training with InternEvo framework, via the capab
 
 # Usage :rocket:
 
-## How to enable InternEvo pack and ISP training for huggingface models?
+## How to enable InternEvo Variable-Length and Intern Sequence Parallel training for huggingface models?
 
 ### Option1: apply the already prepared `internevo.patch`
 

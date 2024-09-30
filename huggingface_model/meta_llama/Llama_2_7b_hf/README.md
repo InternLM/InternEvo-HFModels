@@ -12,7 +12,7 @@ e39b6c1c7cdc890b6849b8c9de545fc9590ba871
 
 # Usage
 
-## How to apply InternEvo patch to support pack and ISP training?
+## How to apply InternEvo patch to support Variable-Length and Intern Sequence Parallel training?
 ```bash
 patch modeling_llama.py internevo.patch
 ```
