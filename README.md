@@ -1,28 +1,29 @@
-# Introduction
+# Introduction :muscle:
 
-Democratizing Huggingface model training with InternEvo framework.
+Democratizing Huggingface model training with InternEvo framework, via the capability of variable-length training and intern sequence parallelism.
 
 ![InternEvo_and_Huggingface](doc/images/InternEvo_and_Huggingface.png)
 
-# Support Matrix
+
+# Support Matrix :heartpulse:
 
 ## Modelzoo
 
-| Model     | Supported (Y/N)     | Variable-length Training (Y/N) | Intern Sequence Parallel (Y/N) |
-|-----------|:-------------------:|-------------------------------:|-------------------------------:|
-| Baichuan2 | Y                   | Y                              | Y                              |
-| Flux      | Y                   | N                              | N                              |
-| InternLM1 | Y                   | Y                              | Y                              |
-| InternLM2 | Y                   | Y                              | Y                              |
-| LLaVA1.5  | Y                   | N                              | N                              |
-| Mamba     | Y                   | N                              | N                              |
-| Llama2    | Y                   | Y                              | Y                              |
-| Mixtral   | Y                   | Y                              | Y                              |
-| Qwen2     | Y                   | Y                              | Y                              |
-| Yi        | Y                   | Y                              | Y                              |
+| Model     | Supported         | Variable-length Training | Intern Sequence Parallel |
+|-----------|:-----------------:|:------------------------:|:------------------------:|
+| Baichuan2 |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| Flux      |:white_check_mark: |:x:                       |:x:                       |
+| InternLM1 |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| InternLM2 |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| LLaVA1.5  |:white_check_mark: |:x:                       |:x:                       |
+| Mamba     |:white_check_mark: |:x:                       |:x:                       |
+| Llama2    |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| Mixtral   |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| Qwen2     |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| Yi        |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
 
 
-# Usage
+# Usage :rocket:
 
 ## How to enable InternEvo pack and ISP training for huggingface models?
 
