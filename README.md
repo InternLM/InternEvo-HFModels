@@ -11,16 +11,16 @@ Democratizing Huggingface model training with InternEvo framework, via the capab
 
 | Model     | Supported         | Variable-Length Training | Intern Sequence Parallel |
 |-----------|:-----------------:|:------------------------:|:------------------------:|
-| Baichuan2 |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
-| Flux      |:white_check_mark: |:x:                       |:x:                       |
-| InternLM1 |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
-| InternLM2 |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
-| LLaVA1.5  |:white_check_mark: |:x:                       |:x:                       |
-| Mamba     |:white_check_mark: |:x:                       |:x:                       |
-| Llama2    |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
-| Mixtral   |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
-| Qwen2     |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
-| Yi        |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| [Baichuan2](huggingface_model/baichuan_inc/Baichuan2_7B_Base) |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| [Flux](huggingface_model/flux)      |:white_check_mark: |:x:                       |:x:                       |
+| [InternLM1](huggingface_model/internlm/internlm_7b) |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| [InternLM2](huggingface_model/internlm/internlm2_7b) |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| [LLaVA1.5](huggingface_model/llava_hf/llava_1_5_7b_hf)  |:white_check_mark: |:x:                       |:x:                       |
+| [Mamba](huggingface_model/mamba)     |:white_check_mark: |:x:                       |:x:                       |
+| [Llama2](huggingface_model/meta_llama/Llama_2_7b_hf)    |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| [Mixtral](huggingface_model/mistralai/mixtral_8x7B_v0_1)   |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| [Qwen2](huggingface_model/Qwen/Qwen2_7B)     |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
+| [Yi](huggingface_model/Yi)        |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
 
 
 # Usage :rocket:
