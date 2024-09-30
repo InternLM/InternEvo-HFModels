@@ -1,6 +1,6 @@
 # Introduction :muscle:
 
-Democratizing Huggingface model training with InternEvo framework, via the capability of variable-length training and intern sequence parallelism.
+Democratizing Huggingface model training with InternEvo framework, via the capability of Variable-Length Training and Intern Sequence Parallelism.
 
 ![InternEvo_and_Huggingface](doc/images/InternEvo_and_Huggingface.png)
 
@@ -9,7 +9,7 @@ Democratizing Huggingface model training with InternEvo framework, via the capab
 
 ## Modelzoo
 
-| Model     | Supported         | Variable-length Training | Intern Sequence Parallel |
+| Model     | Supported         | Variable-Length Training | Intern Sequence Parallel |
 |-----------|:-----------------:|:------------------------:|:------------------------:|
 | Baichuan2 |:white_check_mark: |:white_check_mark:        |:white_check_mark:        |
 | Flux      |:white_check_mark: |:x:                       |:x:                       |
