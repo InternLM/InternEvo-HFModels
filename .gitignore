@@ -147,3 +147,9 @@ llm_ckpts
 events.*
 memory_trace
 RUN*/
+
+# data
+huggingface_model/flux/data
+huggingface_model/flux/flux_weight
+huggingface_model/flux/origin_data
+
